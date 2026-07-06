@@ -1,0 +1,32 @@
+<nav class="navbar navbar-expand-lg navbar-dark fixed-top glass-navbar" id="mainNav">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="{% url 'core:landing' %}">
+            <span class="gradient-text">RittikDesk</span>
+            <span class="text-accent">AI</span>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav mx-auto">
+                <li class="nav-item"><a class="nav-link" href="{% url 'core:landing' %}#features">Features</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'core:landing' %}#pricing">Pricing</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'core:landing' %}#faq">FAQ</a></li>
+                {% if user.is_authenticated %}
+                <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:home' %}">Dashboard</a></li>
+                {% endif %}
+            </ul>
+            <div class="d-flex gap-2">
+                {% if user.is_authenticated %}
+                <a href="{% url 'accounts:profile' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+                    <i class="fas fa-user me-1"></i>{{ user.username }}
+                </a>
+                <a href="{% url 'accounts:logout' %}" class="btn btn-primary btn-sm rounded-pill px-3">Logout</a>
+                {% else %}
+                <a href="{% url 'accounts:login' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Sign In</a>
+                <a href="{% url 'accounts:register' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">Get Started</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</nav>

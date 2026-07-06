@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="profile-section py-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-6">
+                <div class="glass-card p-4">
+                    <div class="text-center mb-4">
+                        <div class="avatar-lg rounded-circle bg-primary d-inline-flex align-items-center justify-content-center text-white fw-bold fs-2 mb-3">
+                            {{ user.username|first|upper }}
+                        </div>
+                        <h4 class="fw-bold">{{ user.get_full_name|default:user.username }}</h4>
+                        <p class="text-muted small">{{ user.email }}</p>
+                    </div>
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        {% for field in form %}
+                        <div class="mb-3">
+                            <label class="form-label small">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors.0 }}</div>{% endif %}
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-primary w-100 rounded-pill glow-btn">Update Profile</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

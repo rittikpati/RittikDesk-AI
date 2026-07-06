@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="auth-section min-vh-100 d-flex align-items-center">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-4 col-md-6">
+                <div class="glass-card p-4">
+                    <div class="text-center mb-4">
+                        <h3 class="fw-bold"><span class="gradient-text">Create Account</span></h3>
+                        <p class="text-muted small">Start your 14-day free trial</p>
+                    </div>
+                    <form method="post">
+                        {% csrf_token %}
+                        {% if form.errors %}
+                        <div class="alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25 small">
+                            Please correct the errors below.
+                        </div>
+                        {% endif %}
+                        <div class="mb-3">
+                            <label class="form-label small">Email</label>
+                            <input type="email" name="email" class="form-control" placeholder="Enter your email" required>
+                            {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small">Username</label>
+                            <input type="text" name="username" class="form-control" placeholder="Choose a username" required>
+                            {% if form.username.errors %}<div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small">Password</label>
+                            <input type="password" name="password1" class="form-control" placeholder="Create a password" required>
+                            {% if form.password1.errors %}<div class="text-danger small mt-1">{{ form.password1.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small">Confirm Password</label>
+                            <input type="password" name="password2" class="form-control" placeholder="Confirm your password" required>
+                            {% if form.password2.errors %}<div class="text-danger small mt-1">{{ form.password2.errors.0 }}</div>{% endif %}
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 rounded-pill glow-btn mb-3">Create Account</button>
+                        <p class="text-center text-muted small mb-0">
+                            Already have an account? <a href="{% url 'accounts:login' %}" class="text-decoration-none">Sign in</a>
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

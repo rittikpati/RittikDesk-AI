@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="dashboard-section py-5">
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col">
+                <h2 class="fw-bold">Welcome, {{ user.username }}!</h2>
+                <p class="text-muted">Your AI-powered dashboard</p>
+            </div>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-3">
+                <div class="glass-card p-3 text-center">
+                    <i class="fas fa-users fa-2x text-primary mb-2"></i>
+                    <h3 class="fw-bold mb-0">0</h3>
+                    <small class="text-muted">Total Contacts</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="glass-card p-3 text-center">
+                    <i class="fas fa-bullhorn fa-2x text-success mb-2"></i>
+                    <h3 class="fw-bold mb-0">0</h3>
+                    <small class="text-muted">Campaigns</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="glass-card p-3 text-center">
+                    <i class="fas fa-robot fa-2x text-warning mb-2"></i>
+                    <h3 class="fw-bold mb-0">0</h3>
+                    <small class="text-muted">AI Chats</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="glass-card p-3 text-center">
+                    <i class="fas fa-chart-bar fa-2x text-info mb-2"></i>
+                    <h3 class="fw-bold mb-0">0</h3>
+                    <small class="text-muted">Reports</small>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-4">
+            <div class="col-md-8">
+                <div class="glass-card p-4">
+                    <h5 class="fw-bold mb-3">Revenue Overview</h5>
+                    <canvas id="dashboardChart" height="200"></canvas>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="glass-card p-4">
+                    <h5 class="fw-bold mb-3">Quick Actions</h5>
+                    <div class="d-grid gap-2">
+                        <a href="#" class="btn btn-outline-light rounded-pill text-start"><i class="fas fa-plus-circle me-2 text-primary"></i>New Contact</a>
+                        <a href="#" class="btn btn-outline-light rounded-pill text-start"><i class="fas fa-bullhorn me-2 text-success"></i>New Campaign</a>
+                        <a href="#" class="btn btn-outline-light rounded-pill text-start"><i class="fas fa-robot me-2 text-warning"></i>AI Assistant</a>
+                        <a href="#" class="btn btn-outline-light rounded-pill text-start"><i class="fas fa-file-export me-2 text-info"></i>Export Report</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const ctx = document.getElementById('dashboardChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        datasets: [{
+            label: 'Revenue',
+            data: [0, 0, 0, 0, 0, 0],
+            borderColor: '#6C63FF',
+            backgroundColor: 'rgba(108, 99, 255, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+            x: { grid: { display: false } }
+        }
+    }
+});
+</script>
+{% endblock %}

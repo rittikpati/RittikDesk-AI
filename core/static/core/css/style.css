@@ -1,0 +1,493 @@
+/* =============================================
+   RittikDesk AI - Design System
+   ============================================= */
+
+:root {
+  --primary: #6C63FF;
+  --primary-dark: #5A52D5;
+  --primary-light: #8B85FF;
+  --secondary: #00D9A6;
+  --accent: #FF6B6B;
+  --dark: #0a0a1a;
+  --dark-alt: #0f0f2a;
+  --dark-card: #12122a;
+  --text: #e0e0e0;
+  --text-muted: #8888aa;
+  --glass: rgba(18, 18, 42, 0.7);
+  --glass-border: rgba(108, 99, 255, 0.15);
+  --glass-hover: rgba(108, 99, 255, 0.25);
+}
+
+/* =============================================
+   Base Styles
+   ============================================= */
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--dark);
+  color: var(--text);
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--primary);
+  color: white;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--dark); }
+::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary-dark); }
+
+/* =============================================
+   Glassmorphism
+   ============================================= */
+
+.glass-card {
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--glass-hover);
+  box-shadow: 0 8px 32px rgba(108, 99, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.glass-navbar {
+  background: rgba(10, 10, 26, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(108, 99, 255, 0.1);
+}
+
+/* =============================================
+   Typography & Gradients
+   ============================================= */
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-accent { color: var(--accent); }
+
+/* =============================================
+   Navbar
+   ============================================= */
+
+#mainNav {
+  transition: all 0.3s ease;
+  padding: 1rem 0;
+}
+
+#mainNav.scrolled {
+  padding: 0.5rem 0;
+  background: rgba(10, 10, 26, 0.95);
+}
+
+.nav-link {
+  color: var(--text-muted) !important;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: color 0.3s ease;
+  padding: 0.5rem 1rem !important;
+}
+
+.nav-link:hover {
+  color: var(--text) !important;
+}
+
+/* =============================================
+   Buttons
+   ============================================= */
+
+.glow-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.glow-btn:hover {
+  box-shadow: 0 0 25px rgba(108, 99, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border: none;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+}
+
+/* =============================================
+   Hero Section
+   ============================================= */
+
+.hero-section {
+  padding-top: 120px;
+  padding-bottom: 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-section::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 30% 50%, rgba(108, 99, 255, 0.08) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.hero-title {
+  line-height: 1.1;
+}
+
+.hero-subtitle {
+  font-size: 1.15rem;
+  line-height: 1.7;
+}
+
+.min-vh-80 {
+  min-height: 80vh;
+}
+
+/* Typing Animation */
+.typing-container {
+  display: inline;
+}
+
+.typing-cursor {
+  animation: blink 1s step-end infinite;
+  color: var(--primary);
+  font-weight: 100;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Hero Mockup */
+.hero-mockup {
+  border-radius: 20px;
+  position: relative;
+  z-index: 2;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.chart-bars .bar {
+  background: linear-gradient(to top, var(--primary), var(--secondary));
+  border-radius: 4px 4px 0 0;
+  opacity: 0.4;
+  transition: all 0.3s ease;
+}
+
+.chart-bars .bar.active {
+  opacity: 1;
+  box-shadow: 0 0 20px rgba(108, 99, 255, 0.3);
+}
+
+.avatar-sm {
+  width: 28px;
+  height: 28px;
+}
+
+/* =============================================
+   Features Section
+   ============================================= */
+
+.features-section {
+  padding: 100px 0;
+}
+
+.feature-card {
+  transition: all 0.4s ease;
+  cursor: default;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 40px rgba(108, 99, 255, 0.15);
+  border-color: var(--primary);
+}
+
+.feature-icon {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(108, 99, 255, 0.1);
+}
+
+/* =============================================
+   Pricing Section
+   ============================================= */
+
+.pricing-section {
+  padding: 100px 0;
+}
+
+.pricing-card {
+  position: relative;
+  transition: all 0.4s ease;
+}
+
+.pricing-card:hover {
+  transform: translateY(-8px);
+}
+
+.pricing-card.popular {
+  border-color: var(--primary);
+  box-shadow: 0 0 30px rgba(108, 99, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.pricing-card.popular:hover {
+  transform: scale(1.05) translateY(-8px);
+}
+
+.pricing-amount {
+  line-height: 1;
+}
+
+/* =============================================
+   Testimonials Section
+   ============================================= */
+
+.testimonials-section {
+  padding: 100px 0;
+}
+
+.testimonial-card {
+  transition: all 0.3s ease;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 1.1rem;
+}
+
+.avatar-lg {
+  width: 80px;
+  height: 80px;
+  font-size: 2rem;
+}
+
+.carousel-control-prev,
+.carousel-control-next {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.8;
+}
+
+.carousel-control-prev { left: -20px; }
+.carousel-control-next { right: -20px; }
+
+/* =============================================
+   FAQ Section
+   ============================================= */
+
+.faq-section {
+  padding: 100px 0;
+}
+
+.accordion-item {
+  background: transparent !important;
+  border: none !important;
+}
+
+.accordion-button {
+  background: transparent !important;
+  color: var(--text) !important;
+  font-weight: 600;
+  font-size: 1rem;
+  box-shadow: none !important;
+  padding: 1.25rem;
+}
+
+.accordion-button::after {
+  filter: invert(0.7);
+}
+
+.accordion-body {
+  padding: 0 1.25rem 1.25rem;
+}
+
+/* =============================================
+   CTA Section
+   ============================================= */
+
+.cta-section {
+  padding: 80px 0;
+}
+
+.cta-card {
+  background: linear-gradient(135deg, rgba(108, 99, 255, 0.15), rgba(0, 217, 166, 0.1));
+  border: 1px solid rgba(108, 99, 255, 0.2);
+}
+
+.cta-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 80% 20%, rgba(108, 99, 255, 0.1) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* =============================================
+   Footer
+   ============================================= */
+
+.footer-section {
+  background: var(--dark-alt);
+  padding: 60px 0 30px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.footer-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 2.2;
+  transition: color 0.3s ease;
+}
+
+.footer-link:hover {
+  color: var(--primary);
+}
+
+.social-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--glass);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: all 0.3s ease;
+  margin-right: 8px;
+}
+
+.social-icon:hover {
+  background: var(--primary);
+  color: white;
+  transform: translateY(-2px);
+}
+
+/* =============================================
+   Auth Section
+   ============================================= */
+
+.auth-section {
+  padding-top: 100px;
+  background: radial-gradient(ellipse at top center, rgba(108, 99, 255, 0.08) 0%, transparent 50%);
+}
+
+.form-control {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: var(--text) !important;
+  border-radius: 10px !important;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.form-control:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.15) !important;
+}
+
+.form-control::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.form-check-input {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.form-check-input:checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* =============================================
+   Dashboard
+   ============================================= */
+
+.dashboard-section {
+  padding-top: 100px;
+  background: radial-gradient(ellipse at top right, rgba(108, 99, 255, 0.05) 0%, transparent 50%);
+}
+
+/* =============================================
+   Animations
+   ============================================= */
+
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.6s ease;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* =============================================
+   Responsive
+   ============================================= */
+
+@media (max-width: 992px) {
+  .hero-title { font-size: 2.5rem; }
+  .pricing-card.popular { transform: none; }
+  .pricing-card.popular:hover { transform: translateY(-8px); }
+  .carousel-control-prev,
+  .carousel-control-next { display: none; }
+}
+
+@media (max-width: 768px) {
+  .hero-section { padding-top: 100px; }
+  .hero-title { font-size: 2rem; }
+  .hero-subtitle { font-size: 1rem; }
+  .features-section,
+  .pricing-section,
+  .testimonials-section,
+  .faq-section { padding: 60px 0; }
+  .social-links { margin-top: 1rem; }
+}
