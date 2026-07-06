@@ -154,6 +154,14 @@ if CLOUDINARY_CLOUD_NAME:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# OpenRouter AI
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
+OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'openai/gpt-3.5-turbo')
+AI_TIMEOUT = int(os.getenv('AI_TIMEOUT', '30'))
+AI_TEMPERATURE = float(os.getenv('AI_TEMPERATURE', '0.7'))
+AI_MAX_TOKENS = int(os.getenv('AI_MAX_TOKENS', '2048'))
+
 # DRF + JWT
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -187,3 +195,21 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 LOGIN_URL = 'accounts:login'
 LOGIN_REDIRECT_URL = 'dashboard:home'
 LOGOUT_REDIRECT_URL = 'core:landing'
+
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'assistant.services.ai_service': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}

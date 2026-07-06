@@ -33,10 +33,9 @@
 
         <div class="dash-nav-section">
             <div class="dash-nav-label">AI &amp; Analytics</div>
-            <a href="#" class="dash-nav-item" onclick="dashComingSoon('AI Assistant')">
+            <a href="{% url 'assistant:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'assistant' %} active{% endif %}">
                 <i class="fas fa-robot"></i>
                 <span>AI Assistant</span>
-                <span class="dash-nav-badge">Soon</span>
             </a>
             <a href="#" class="dash-nav-item" onclick="dashComingSoon('Analytics')">
                 <i class="fas fa-chart-pie"></i>
