@@ -1,0 +1,55 @@
+{% load static %}
+<header class="dash-topbar">
+    <div class="dash-topbar-left">
+        <button class="dash-toggle" id="dashToggle" title="Toggle sidebar">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="dash-search">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search anything..." id="dashSearch" autocomplete="off">
+            <span class="dash-search-hint">Ctrl+K</span>
+        </div>
+    </div>
+
+    <div class="dash-topbar-right">
+        <button class="dash-icon-btn" id="dashNotifBtn" title="Notifications">
+            <i class="fas fa-bell"></i>
+            <span class="dash-notif-dot"></span>
+        </button>
+
+        <div class="dash-user">
+            <button class="dash-user-btn" id="dashUserBtn">
+                <div class="dash-user-avatar">{{ user.username|first|upper }}</div>
+                <span class="dash-user-name">{{ user.get_full_name|default:user.email }}</span>
+                <i class="fas fa-chevron-down dash-chevron"></i>
+            </button>
+
+            <div class="dash-dropdown" id="dashDropdown">
+                <div class="dash-dropdown-header">
+                    <div class="dash-user-avatar lg">{{ user.username|first|upper }}</div>
+                    <div>
+                        <div class="dash-dropdown-name">{{ user.get_full_name|default:user.username }}</div>
+                        <div class="dash-dropdown-email">{{ user.email }}</div>
+                    </div>
+                </div>
+                <div class="dash-dropdown-divider"></div>
+                <a href="{% url 'accounts:profile' %}" class="dash-dropdown-item">
+                    <i class="fas fa-user-cog"></i> Profile
+                </a>
+                <a href="#" class="dash-dropdown-item" onclick="dashComingSoon('Settings')">
+                    <i class="fas fa-cog"></i> Settings
+                </a>
+                <a href="#" class="dash-dropdown-item" onclick="dashComingSoon('Help')">
+                    <i class="fas fa-life-ring"></i> Help
+                </a>
+                <div class="dash-dropdown-divider"></div>
+                <a href="#" class="dash-dropdown-item dash-dropdown-danger" id="dashProfileLogoutLink">
+                    <i class="fas fa-sign-out-alt"></i> Sign Out
+                </a>
+                <form id="dashProfileLogoutForm" method="post" action="{% url 'accounts:logout' %}" style="display:none">
+                    {% csrf_token %}
+                </form>
+            </div>
+        </div>
+    </div>
+</header>

@@ -17,9 +17,15 @@
                     automated campaigns, and real-time analytics. Built for modern teams.
                 </p>
                 <div class="d-flex gap-3 flex-wrap">
+                    {% if user.is_authenticated %}
+                    <a href="{% url 'dashboard:home' %}" class="btn btn-primary btn-lg rounded-pill px-4 glow-btn">
+                        <i class="fas fa-th-large me-2"></i>Go to Dashboard
+                    </a>
+                    {% else %}
                     <a href="{% url 'accounts:register' %}" class="btn btn-primary btn-lg rounded-pill px-4 glow-btn">
                         Start Free Trial <i class="fas fa-arrow-right ms-2"></i>
                     </a>
+                    {% endif %}
                     <a href="#features" class="btn btn-outline-light btn-lg rounded-pill px-4">
                         <i class="fas fa-play me-2"></i> See How It Works
                     </a>

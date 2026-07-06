@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - RittikDesk AI{% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block content %}
+<div class="dash-layout">
+    {% include 'dashboard/components/sidebar.html' %}
+    <div class="dash-main" id="dashMain">
+        {% include 'dashboard/components/topbar.html' %}
+        <div class="dash-content">
+            {% if messages %}
+            {% for message in messages %}
+            <div class="dash-alert dash-alert-{{ message.tags }}">
+                <span>{{ message }}</span>
+                <button class="dash-alert-close" type="button" onclick="this.parentElement.remove()">&times;</button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% block dashboard_content %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block footer %}{% endblock %}
+
+{% block extra_head %}
+<link href="{% static 'dashboard/css/dashboard.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% load static %}
+<aside class="dash-sidebar" id="dashSidebar">
+    <div class="dash-sidebar-header">
+        <div class="dash-logo">
+            <div class="dash-logo-icon">RD</div>
+            <div class="dash-logo-text">
+                <span class="dash-logo-name">RittikDesk</span>
+                <span class="dash-logo-ai">AI</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="dash-nav">
+        <div class="dash-nav-section">
+            <div class="dash-nav-label">Main</div>
+            <a href="{% url 'dashboard:home' %}" class="dash-nav-item{% if request.resolver_match.url_name == 'home' %} active{% endif %}">
+                <i class="fas fa-th-large"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="{% url 'contacts:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'contacts' %} active{% endif %}">
+                <i class="fas fa-address-book"></i>
+                <span>Contacts</span>
+            </a>
+            <a href="#" class="dash-nav-item" onclick="dashComingSoon('Campaigns')">
+                <i class="fas fa-bullhorn"></i>
+                <span>Campaigns</span>
+                <span class="dash-nav-badge">Soon</span>
+            </a>
+        </div>
+
+        <div class="dash-nav-section">
+            <div class="dash-nav-label">AI &amp; Analytics</div>
+            <a href="#" class="dash-nav-item" onclick="dashComingSoon('AI Assistant')">
+                <i class="fas fa-robot"></i>
+                <span>AI Assistant</span>
+                <span class="dash-nav-badge">Soon</span>
+            </a>
+            <a href="#" class="dash-nav-item" onclick="dashComingSoon('Analytics')">
+                <i class="fas fa-chart-pie"></i>
+                <span>Analytics</span>
+                <span class="dash-nav-badge">Soon</span>
+            </a>
+        </div>
+
+        <div class="dash-nav-section">
+            <div class="dash-nav-label">Workspace</div>
+            <a href="#" class="dash-nav-item" onclick="dashComingSoon('Settings')">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </nav>
+
+    <div class="dash-sidebar-footer">
+        <a href="#" class="dash-nav-item" id="dashLogoutLink">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Sign Out</span>
+        </a>
+        <form id="dashLogoutForm" method="post" action="{% url 'accounts:logout' %}" style="display:none">
+            {% csrf_token %}
+        </form>
+    </div>
+</aside>

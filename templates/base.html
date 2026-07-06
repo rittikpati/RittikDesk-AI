@@ -14,7 +14,9 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
+    {% block navbar %}
     {% include 'components/navbar.html' %}
+    {% endblock %}
 
     <main>
         {% if messages %}
@@ -31,7 +33,9 @@
         {% block content %}{% endblock %}
     </main>
 
+    {% block footer %}
     {% include 'components/footer.html' %}
+    {% endblock %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

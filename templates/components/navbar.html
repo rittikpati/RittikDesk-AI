@@ -13,15 +13,15 @@
                 <li class="nav-item"><a class="nav-link" href="{% url 'core:landing' %}#pricing">Pricing</a></li>
                 <li class="nav-item"><a class="nav-link" href="{% url 'core:landing' %}#faq">FAQ</a></li>
                 {% if user.is_authenticated %}
-                <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:home' %}">Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'accounts:profile' %}">Profile</a></li>
                 {% endif %}
             </ul>
             <div class="d-flex gap-2">
                 {% if user.is_authenticated %}
-                <a href="{% url 'accounts:profile' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
-                    <i class="fas fa-user me-1"></i>{{ user.username }}
+                <a href="{% url 'dashboard:home' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+                    <i class="fas fa-th-large me-1"></i>Dashboard
                 </a>
-                <a href="{% url 'accounts:logout' %}" class="btn btn-primary btn-sm rounded-pill px-3">Logout</a>
+                <a href="{% url 'accounts:logout' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Logout</a>
                 {% else %}
                 <a href="{% url 'accounts:login' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Sign In</a>
                 <a href="{% url 'accounts:register' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">Get Started</a>

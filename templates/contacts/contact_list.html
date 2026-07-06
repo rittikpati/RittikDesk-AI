@@ -1,0 +1,179 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Contacts - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'contacts/css/contacts.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="contacts-header">
+  <h2>Contacts <span class="contacts-count" id="contactCount">({{ total_contacts }})</span></h2>
+  <div class="contacts-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="contactSearch" placeholder="Search contacts..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+      <span class="search-box-spinner" id="searchSpinner"></span>
+    </div>
+    <div class="filter-group">
+      <select id="tagFilter">
+        <option value="">All Tags</option>
+        {% for tag in tag_choices %}
+        <option value="{{ tag }}" {% if active_tag == tag %}selected{% endif %}>{{ tag }}</option>
+        {% endfor %}
+      </select>
+      <select id="sortSelect">
+        {% for val, label in sort_choices %}
+        <option value="{{ val }}" {% if sort_by == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <a href="{% url 'contacts:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn" id="addContactBtn">
+      <i class="fas fa-plus me-1"></i>Add Contact
+    </a>
+  </div>
+</div>
+
+{% csrf_token %}
+
+<div class="dash-card" id="contactsCard">
+  {% if contacts %}
+
+  <div class="bulk-bar" id="bulkBar" style="display:none">
+    <div class="bulk-bar-inner">
+      <span class="bulk-count" id="bulkCount">0 selected</span>
+      <button class="bulk-delete-btn" id="bulkDeleteBtn"><i class="fas fa-trash me-1"></i>Delete Selected</button>
+      <button class="bulk-export-btn" id="bulkExportBtn"><i class="fas fa-download me-1"></i>Export CSV</button>
+      <button class="bulk-clear-btn" id="bulkClearBtn" title="Clear selection">&times;</button>
+    </div>
+  </div>
+
+  <div class="dash-table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th class="contact-checkbox"><input type="checkbox" id="selectAll"></th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Company</th>
+          <th>Phone</th>
+          <th>Tags</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="contactsResults">
+        {% for contact in contacts %}
+        <tr>
+          <td class="contact-checkbox"><input type="checkbox" name="contact_id" value="{{ contact.pk }}"></td>
+          <td>
+            <div class="dash-td-name">
+              <span class="contact-avatar">{{ contact.full_name|slice:":2"|upper }}</span>
+              <div>
+                <div class="contact-name">{{ contact.full_name }}</div>
+                {% if contact.job_title %}<div class="contact-company">{{ contact.job_title }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td>{{ contact.email|default:'—' }}</td>
+          <td>{{ contact.company|default:'—' }}</td>
+          <td>{{ contact.phone|default:'—' }}</td>
+          <td>
+            {% for tag in contact.tag_list %}
+            <span class="contact-tag contact-tag--{{ tag|lower }}">{{ tag }}</span>
+            {% empty %}
+            <span style="color:var(--dash-text-ter);font-size:0.7rem">—</span>
+            {% endfor %}
+          </td>
+          <td>
+            <a href="{% url 'contacts:detail' contact.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            <a href="{% url 'contacts:update' contact.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'contacts:delete' contact.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="contacts-pagination" id="contactsPagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&tag={{ active_tag|urlencode }}&sort={{ sort_by }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&tag={{ active_tag|urlencode }}&sort={{ sort_by }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% else %}
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&tag={{ active_tag|urlencode }}&sort={{ sort_by }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&tag={{ active_tag|urlencode }}&sort={{ sort_by }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&tag={{ active_tag|urlencode }}&sort={{ sort_by }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
+    {% endif %}
+  </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="contacts-empty">
+    <div class="contacts-empty-icon"><i class="fas fa-address-book"></i></div>
+    <h4>No contacts yet</h4>
+    <p>Start building your CRM by adding your first contact.</p>
+    <a href="{% url 'contacts:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Add Your First Contact
+    </a>
+  </div>
+  {% endif %}
+
+  <div class="search-no-results" id="searchNoResults" style="display:none">
+    <div class="search-no-results-icon"><i class="fas fa-search"></i></div>
+    <h4>No contacts found</h4>
+    <p id="searchNoResultsMsg">Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+  </div>
+</div>
+
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content" style="background:var(--dash-card-bg);border:1px solid var(--dash-border);border-radius:14px">
+      <div class="modal-body text-center p-4">
+        <div class="bulk-modal-icon"><i class="fas fa-exclamation-triangle"></i></div>
+        <h5 style="font-weight:600;margin-bottom:6px">Delete Contacts</h5>
+        <p style="font-size:0.82rem;color:var(--dash-text-sec);margin:0">
+          Are you sure you want to delete <strong id="bulkDeleteCount">0</strong> contact(s)? This cannot be undone.
+        </p>
+      </div>
+      <div class="modal-footer justify-content-center border-0 pt-0 pb-4">
+        <button type="button" class="btn btn-outline-light btn-sm rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn rounded-pill px-3" id="bulkDeleteConfirm" style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+          <i class="fas fa-trash me-1"></i>Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'contacts/js/contacts.js' %}"></script>
+{% endblock %}

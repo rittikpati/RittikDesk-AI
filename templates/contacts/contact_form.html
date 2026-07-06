@@ -1,0 +1,100 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'contacts/css/contacts.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="contacts-header">
+  <h2>{{ title }}</h2>
+  <a href="{% url 'contacts:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Contacts</a>
+</div>
+
+<div class="dash-card" style="max-width:640px">
+  <form method="post" enctype="multipart/form-data" class="contact-form" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="dash-alert dash-alert-error">
+      {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Full Name <span style="color:var(--dash-red)">*</span></label>
+        {{ form.full_name }}
+        {% if form.full_name.errors %}<div class="invalid-feedback">{{ form.full_name.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Email</label>
+        {{ form.email }}
+        {% if form.email.errors %}<div class="invalid-feedback">{{ form.email.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Phone</label>
+        {{ form.phone }}
+        {% if form.phone.errors %}<div class="invalid-feedback">{{ form.phone.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Company</label>
+        {{ form.company }}
+        {% if form.company.errors %}<div class="invalid-feedback">{{ form.company.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Job Title</label>
+        {{ form.job_title }}
+        {% if form.job_title.errors %}<div class="invalid-feedback">{{ form.job_title.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec);margin-bottom:8px">Quick Tags</label>
+        <div class="tag-checkboxes">
+          {{ form.tag_choices }}
+        </div>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Custom Tags</label>
+        {{ form.tags }}
+        <small style="color:var(--dash-text-ter);font-size:0.65rem">Separate custom tags with commas</small>
+        {% if form.tags.errors %}<div class="invalid-feedback">{{ form.tags.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Notes</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}<div class="invalid-feedback">{{ form.notes.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Profile Image</label>
+        {{ form.profile_image }}
+        {% if form.profile_image.errors %}<div class="invalid-feedback">{{ form.profile_image.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-border)">
+      <button type="submit" class="btn btn-primary rounded-pill px-4 glow-btn">
+        <i class="fas fa-check me-1"></i>{% if is_update %}Update{% else %}Create{% endif %} Contact
+      </button>
+      <a href="{% url 'contacts:list' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'contacts/js/contacts.js' %}"></script>
+{% endblock %}
