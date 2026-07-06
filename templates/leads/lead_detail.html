@@ -1,0 +1,105 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ lead.lead_name }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'leads/css/leads.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="leads-header">
+  <h2>Lead Details</h2>
+  <a href="{% url 'leads:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Leads</a>
+</div>
+
+<div class="dash-grid" style="grid-template-columns: 1fr 1fr; gap:20px">
+  <div class="dash-card">
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <span class="lead-avatar-sm">{{ lead.lead_name|slice:":2"|upper }}</span>
+      <div>
+        <h4 style="margin:0;font-size:1.05rem;font-weight:700">{{ lead.lead_name }}</h4>
+        {% if lead.company %}<span style="color:var(--dash-text-sec);font-size:0.8rem">{{ lead.company }}</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Contact Person</div>
+      <div class="detail-value">{{ lead.contact_person|default:'—' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Email</div>
+      <div class="detail-value">
+        {% if lead.email %}
+        <a href="mailto:{{ lead.email }}" style="color:var(--dash-brand);text-decoration:none">{{ lead.email }}</a>
+        {% else %}—{% endif %}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Phone</div>
+      <div class="detail-value">{{ lead.phone|default:'—' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Source</div>
+      <div class="detail-value">{{ lead.source|default:'—' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Expected Revenue</div>
+      <div class="detail-value">{% if lead.expected_revenue %}${{ lead.expected_revenue|floatformat:2 }}{% else %}—{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="dash-card">
+    <div class="detail-section">
+      <div class="detail-label">Status</div>
+      <div><span class="lead-badge lead-badge--{{ lead.status|slugify }}">{{ lead.status }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Priority</div>
+      <div><span class="lead-priority lead-priority--{{ lead.priority|lower }}">{{ lead.priority }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Assigned To</div>
+      <div class="detail-value">{{ lead.assigned_user.get_full_name|default:lead.assigned_user.email|default:'Unassigned' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Notes</div>
+      <div class="detail-notes-card">{{ lead.notes|default:'No notes recorded.' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Created</div>
+      <div class="detail-value">{{ lead.created_at|date:'M d, Y' }} at {{ lead.created_at|date:'g:i A' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Last Updated</div>
+      <div class="detail-value">{{ lead.updated_at|date:'M d, Y' }} at {{ lead.updated_at|date:'g:i A' }}</div>
+    </div>
+
+    <div class="detail-actions">
+      <a href="{% url 'leads:update' lead.pk %}" class="btn btn-primary rounded-pill px-3 glow-btn btn-sm">
+        <i class="fas fa-edit me-1"></i>Edit
+      </a>
+      <a href="{% url 'leads:delete' lead.pk %}" class="btn rounded-pill px-3 btn-sm" style="background:rgba(255,107,107,0.1);color:var(--dash-red);border:1px solid rgba(255,107,107,0.15)">
+        <i class="fas fa-trash me-1"></i>Delete
+      </a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'leads/js/leads.js' %}"></script>
+{% endblock %}

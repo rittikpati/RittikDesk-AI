@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'accounts',
     'dashboard',
     'contacts',
+    'leads',
     'campaigns',
     'assistant',
     'analytics',

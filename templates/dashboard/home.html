@@ -56,26 +56,76 @@
     <div class="dash-stat dash-loaded">
       <div class="dash-stat-header">
         <div>
-          <div class="dash-stat-label">AI Conversations</div>
-          <div class="dash-stat-value"><span data-count="2847">0</span></div>
+          <div class="dash-stat-label">Total Leads</div>
+          <div class="dash-stat-value"><span data-count="{{ total_leads }}">0</span></div>
         </div>
-        <div class="dash-stat-icon" style="background:rgba(255,184,0,0.12);color:#FFB800"><i class="fas fa-robot"></i></div>
+        <div class="dash-stat-icon" style="background:rgba(255,184,0,0.12);color:#FFB800"><i class="fas fa-tag"></i></div>
       </div>
-      <div class="dash-stat-footer up"><i class="fas fa-arrow-up"></i> 28.3% <span>vs last week</span></div>
-      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="120,190,260,340,410,500,590,680,790,910,1050,1200,1400,1650,1950,2280,2600,2847" data-color="#FFB800"></canvas></div>
+      <div class="dash-stat-footer up"><i class="fas fa-arrow-up"></i> {{ new_leads_month }} <span>new this month</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ total_leads }}" data-color="#FFB800"></canvas></div>
     </div>
   </div>
   <div class="dash-col-3">
     <div class="dash-stat dash-loaded">
       <div class="dash-stat-header">
         <div>
-          <div class="dash-stat-label">Emails Sent</div>
-          <div class="dash-stat-value"><span data-count="48200">0</span></div>
+          <div class="dash-stat-label">New Leads</div>
+          <div class="dash-stat-value"><span data-count="{{ new_leads_month }}">0</span></div>
         </div>
-        <div class="dash-stat-icon" style="background:rgba(0,180,216,0.12);color:#00B4D8"><i class="fas fa-envelope"></i></div>
+        <div class="dash-stat-icon" style="background:rgba(0,180,216,0.12);color:#00B4D8"><i class="fas fa-user-plus"></i></div>
       </div>
-      <div class="dash-stat-footer up"><i class="fas fa-arrow-up"></i> 18.2% <span>vs last month</span></div>
-      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="12,15,18,21,24,27,30,33,36,39,42,45,48.2" data-color="#00B4D8"></canvas></div>
+      <div class="dash-stat-footer up"><i class="fas fa-arrow-up"></i> {{ new_leads_month }} <span>this month</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ total_leads }}" data-color="#00B4D8"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<div class="dash-row">
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Won Leads</div>
+          <div class="dash-stat-value"><span data-count="{{ won_leads }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(0,217,166,0.12);color:#00D9A6"><i class="fas fa-trophy"></i></div>
+      </div>
+      <div class="dash-stat-footer up"><i class="fas fa-check-circle"></i> {{ won_leads }} <span>converted</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ won_leads }}" data-color="#00D9A6"></canvas></div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Lost Leads</div>
+          <div class="dash-stat-value"><span data-count="{{ lost_leads }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(255,107,107,0.12);color:#FF6B6B"><i class="fas fa-times-circle"></i></div>
+      </div>
+      <div class="dash-stat-footer" style="color:var(--dash-red)"><i class="fas fa-arrow-down"></i> {{ lost_leads }} <span>lost</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ lost_leads }}" data-color="#FF6B6B"></canvas></div>
+    </div>
+  </div>
+  <div class="dash-col-6">
+    <div class="dash-card dash-loaded" style="height:100%">
+      <div class="dash-card-head">
+        <span class="dash-card-title">Lead Pipeline</span>
+        <a href="{% url 'leads:list' %}" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div class="dash-activity">
+        {% for lead in recent_leads %}
+        <div class="dash-act">
+          <div class="dash-act-dot" style="background:{% if lead.status == 'Won' %}#00D9A6{% elif lead.status == 'Lost' %}#FF6B6B{% elif lead.status == 'New' %}#3699ff{% elif lead.status == 'Contacted' %}#8B85FF{% elif lead.status == 'Qualified' %}#00c9a7{% elif lead.status == 'Proposal Sent' %}#ffc107{% else %}#ff9f43{% endif %}"></div>
+          <div class="dash-act-body">
+            <div class="dash-act-text">Lead <strong>{{ lead.lead_name }}</strong> — {{ lead.status }}</div>
+            <div class="dash-act-time">{{ lead.created_at|timesince }} ago</div>
+          </div>
+        </div>
+        {% empty %}
+        <div style="text-align:center;color:var(--dash-text-ter);padding:20px;font-size:0.8rem">No leads yet. <a href="{% url 'leads:create' %}" style="color:var(--dash-brand)">Add your first lead</a>.</div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 </div>
@@ -192,6 +242,10 @@
         <a href="{% url 'contacts:create' %}" class="dash-action">
           <span class="dash-action-icon" style="background:rgba(108,99,255,0.1);color:#8B85FF"><i class="fas fa-user-plus"></i></span>
           <span>Add Contact</span>
+        </a>
+        <a href="{% url 'leads:create' %}" class="dash-action">
+          <span class="dash-action-icon" style="background:rgba(255,184,0,0.1);color:#FFB800"><i class="fas fa-tag"></i></span>
+          <span>Add Lead</span>
         </a>
         <button class="dash-action" onclick="dashComingSoon('Campaign')">
           <span class="dash-action-icon" style="background:rgba(0,217,166,0.1);color:#00D9A6"><i class="fas fa-bullhorn"></i></span>

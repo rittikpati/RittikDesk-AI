@@ -21,6 +21,10 @@
                 <i class="fas fa-address-book"></i>
                 <span>Contacts</span>
             </a>
+            <a href="{% url 'leads:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'leads' %} active{% endif %}">
+                <i class="fas fa-tag"></i>
+                <span>Leads</span>
+            </a>
             <a href="#" class="dash-nav-item" onclick="dashComingSoon('Campaigns')">
                 <i class="fas fa-bullhorn"></i>
                 <span>Campaigns</span>

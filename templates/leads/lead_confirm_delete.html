@@ -1,0 +1,71 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Delete Lead - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'leads/css/leads.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="leads-header">
+  <h2>Delete Lead</h2>
+  <a href="{% url 'leads:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Leads</a>
+</div>
+
+<div class="dash-card" style="max-width:480px">
+  <div style="text-align:center;padding:10px 0" id="initialStage">
+    <div class="bulk-modal-icon"><i class="fas fa-exclamation-triangle"></i></div>
+    <h4 style="font-weight:600;margin-bottom:6px">Delete "{{ lead.lead_name }}"?</h4>
+    <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:6px">
+      This action cannot be undone. This will permanently delete this lead and all associated data.
+    </p>
+
+    <div class="d-flex gap-2 justify-content-center mt-4">
+      <button type="button" class="btn rounded-pill px-4 glow-btn" id="confirmDeleteBtn" style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+        <i class="fas fa-trash me-1"></i>Delete Lead
+      </button>
+      <a href="{% url 'leads:detail' lead.pk %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </div>
+
+  <div style="display:none;text-align:center;padding:10px 0" id="deleteStage">
+    <div class="bulk-modal-icon"><i class="fas fa-shield-halved"></i></div>
+    <h4 style="font-weight:600;margin-bottom:6px">Are you sure?</h4>
+    <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:6px">
+      Type <strong style="color:var(--dash-red)">delete</strong> to confirm.
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3" style="max-width:200px;margin:12px auto">
+        <input type="text" name="confirm" class="form-control text-center" id="deleteConfirmInput" placeholder="type delete" autocomplete="off" required>
+      </div>
+      <div class="d-flex gap-2 justify-content-center">
+        <button type="submit" class="btn rounded-pill px-4 glow-btn" id="deleteSubmitBtn" disabled style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+          <i class="fas fa-trash me-1"></i>Permanently Delete
+        </button>
+        <button type="button" class="btn btn-outline-light btn-sm rounded-pill px-3" id="cancelDeleteBtn">Go Back</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'leads/js/leads.js' %}"></script>
+<script>
+  (function () {
+    var input = document.getElementById('deleteConfirmInput');
+    var submit = document.getElementById('deleteSubmitBtn');
+    if (input && submit) {
+      input.addEventListener('input', function () {
+        submit.disabled = input.value.trim().toLowerCase() !== 'delete';
+      });
+    }
+  })();
+</script>
+{% endblock %}

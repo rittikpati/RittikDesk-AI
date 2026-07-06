@@ -1,0 +1,187 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Leads - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'leads/css/leads.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="leads-header">
+  <h2>Leads <span class="leads-count" id="leadCount">({{ total_leads }})</span></h2>
+  <div class="leads-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="leadSearch" placeholder="Search leads..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+      <span class="search-box-spinner" id="searchSpinner"></span>
+    </div>
+    <div class="filter-group">
+      <select id="statusFilter">
+        <option value="">All Status</option>
+        {% for s in status_choices %}
+        <option value="{{ s }}" {% if active_status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <select id="priorityFilter">
+        <option value="">All Priority</option>
+        {% for p in priority_choices %}
+        <option value="{{ p }}" {% if active_priority == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+      <select id="sourceFilter">
+        <option value="">All Sources</option>
+        {% for src in source_choices %}
+        <option value="{{ src }}" {% if active_source == src %}selected{% endif %}>{{ src }}</option>
+        {% endfor %}
+      </select>
+      <select id="sortSelect">
+        {% for val, label in sort_choices %}
+        <option value="{{ val }}" {% if sort_by == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <a href="{% url 'leads:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn" id="addLeadBtn">
+      <i class="fas fa-plus me-1"></i>Add Lead
+    </a>
+  </div>
+</div>
+
+{% csrf_token %}
+
+<div class="dash-card" id="leadsCard">
+  {% if leads %}
+
+  <div class="bulk-bar" id="bulkBar" style="display:none">
+    <div class="bulk-bar-inner">
+      <span class="bulk-count" id="bulkCount">0 selected</span>
+      <button class="bulk-delete-btn" id="bulkDeleteBtn"><i class="fas fa-trash me-1"></i>Delete Selected</button>
+      <button class="bulk-export-btn" id="bulkExportBtn"><i class="fas fa-download me-1"></i>Export CSV</button>
+      <button class="bulk-clear-btn" id="bulkClearBtn" title="Clear selection">&times;</button>
+    </div>
+  </div>
+
+  <div class="dash-table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th class="lead-checkbox"><input type="checkbox" id="selectAll"></th>
+          <th>Lead Name</th>
+          <th>Contact</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Priority</th>
+          <th>Revenue</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="leadsResults">
+        {% for lead in leads %}
+        <tr>
+          <td class="lead-checkbox"><input type="checkbox" name="lead_id" value="{{ lead.pk }}"></td>
+          <td>
+            <div class="dash-td-name">
+              <span class="lead-avatar">{{ lead.lead_name|slice:":2"|upper }}</span>
+              <div>
+                <div class="lead-name">{{ lead.lead_name }}</div>
+                {% if lead.company %}<div class="lead-company">{{ lead.company }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td>{{ lead.contact_person|default:'—' }}</td>
+          <td>{{ lead.email|default:'—' }}</td>
+          <td><span class="lead-badge lead-badge--{{ lead.status|slugify }}">{{ lead.status }}</span></td>
+          <td><span class="lead-priority lead-priority--{{ lead.priority|lower }}">{{ lead.priority }}</span></td>
+          <td>{% if lead.expected_revenue %}${{ lead.expected_revenue|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td>
+            <a href="{% url 'leads:detail' lead.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            <a href="{% url 'leads:update' lead.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'leads:delete' lead.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="leads-pagination" id="leadsPagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% else %}
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
+    {% endif %}
+  </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="leads-empty">
+    <div class="leads-empty-icon"><i class="fas fa-tag"></i></div>
+    <h4>No leads yet</h4>
+    <p>Start tracking your sales pipeline by adding your first lead.</p>
+    <a href="{% url 'leads:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Add Your First Lead
+    </a>
+  </div>
+  {% endif %}
+
+  <div class="search-no-results" id="searchNoResults" style="display:none">
+    <div class="search-no-results-icon"><i class="fas fa-search"></i></div>
+    <h4>No leads found</h4>
+    <p id="searchNoResultsMsg">Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+  </div>
+</div>
+
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content" style="background:var(--dash-card-bg);border:1px solid var(--dash-border);border-radius:14px">
+      <div class="modal-body text-center p-4">
+        <div class="bulk-modal-icon"><i class="fas fa-exclamation-triangle"></i></div>
+        <h5 style="font-weight:600;margin-bottom:6px">Delete Leads</h5>
+        <p style="font-size:0.82rem;color:var(--dash-text-sec);margin:0">
+          Are you sure you want to delete <strong id="bulkDeleteCount">0</strong> lead(s)? This cannot be undone.
+        </p>
+      </div>
+      <div class="modal-footer justify-content-center border-0 pt-0 pb-4">
+        <button type="button" class="btn btn-outline-light btn-sm rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn rounded-pill px-3" id="bulkDeleteConfirm" style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+          <i class="fas fa-trash me-1"></i>Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'leads/js/leads.js' %}"></script>
+{% endblock %}

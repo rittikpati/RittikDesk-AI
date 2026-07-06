@@ -1,0 +1,110 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'leads/css/leads.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="leads-header">
+  <h2>{{ title }}</h2>
+  <a href="{% url 'leads:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Leads</a>
+</div>
+
+<div class="dash-card" style="max-width:720px">
+  <form method="post" class="lead-form" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="dash-alert dash-alert-error">
+      {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Lead Name <span style="color:var(--dash-red)">*</span></label>
+        {{ form.lead_name }}
+        {% if form.lead_name.errors %}<div class="invalid-feedback">{{ form.lead_name.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Company</label>
+        {{ form.company }}
+        {% if form.company.errors %}<div class="invalid-feedback">{{ form.company.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Contact Person</label>
+        {{ form.contact_person }}
+        {% if form.contact_person.errors %}<div class="invalid-feedback">{{ form.contact_person.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Assigned To</label>
+        {{ form.assigned_user }}
+        {% if form.assigned_user.errors %}<div class="invalid-feedback">{{ form.assigned_user.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Email</label>
+        {{ form.email }}
+        {% if form.email.errors %}<div class="invalid-feedback">{{ form.email.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Phone</label>
+        {{ form.phone }}
+        {% if form.phone.errors %}<div class="invalid-feedback">{{ form.phone.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Status</label>
+        {{ form.status }}
+        {% if form.status.errors %}<div class="invalid-feedback">{{ form.status.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Priority</label>
+        {{ form.priority }}
+        {% if form.priority.errors %}<div class="invalid-feedback">{{ form.priority.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Source</label>
+        {{ form.source }}
+        {% if form.source.errors %}<div class="invalid-feedback">{{ form.source.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Expected Revenue ($)</label>
+        {{ form.expected_revenue }}
+        {% if form.expected_revenue.errors %}<div class="invalid-feedback">{{ form.expected_revenue.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Notes</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}<div class="invalid-feedback">{{ form.notes.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-border)">
+      <button type="submit" class="btn btn-primary rounded-pill px-4 glow-btn">
+        <i class="fas fa-check me-1"></i>{% if is_update %}Update{% else %}Create{% endif %} Lead
+      </button>
+      <a href="{% url 'leads:list' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'leads/js/leads.js' %}"></script>
+{% endblock %}
