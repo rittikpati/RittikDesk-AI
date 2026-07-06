@@ -2,6 +2,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView
 from contacts.models import Contact
 from leads.models import Lead
+from campaigns.models import Campaign
 from django.utils import timezone
 from datetime import timedelta
 
@@ -25,6 +26,12 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         lost_leads = Lead.objects.filter(owner=user, status='Lost').count()
         recent_leads = Lead.objects.filter(owner=user)[:5]
 
+        total_campaigns = Campaign.objects.filter(owner=user).count()
+        draft_campaigns = Campaign.objects.filter(owner=user, status='Draft').count()
+        scheduled_campaigns = Campaign.objects.filter(owner=user, status='Scheduled').count()
+        sent_campaigns = Campaign.objects.filter(owner=user, status='Sent').count()
+        recent_campaigns = Campaign.objects.filter(owner=user)[:5]
+
         context['total_contacts'] = total_contacts
         context['new_contacts_month'] = new_contacts_month
         context['recent_contacts'] = recent_contacts
@@ -33,4 +40,9 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         context['won_leads'] = won_leads
         context['lost_leads'] = lost_leads
         context['recent_leads'] = recent_leads
+        context['total_campaigns'] = total_campaigns
+        context['draft_campaigns'] = draft_campaigns
+        context['scheduled_campaigns'] = scheduled_campaigns
+        context['sent_campaigns'] = sent_campaigns
+        context['recent_campaigns'] = recent_campaigns
         return context

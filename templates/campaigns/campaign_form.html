@@ -1,0 +1,76 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'campaigns/css/campaigns.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="campaigns-header">
+  <h2>{{ title }}</h2>
+  <a href="{% url 'campaigns:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Campaigns</a>
+</div>
+
+<div class="dash-card" style="max-width:720px">
+  <form method="post" class="campaign-form" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="dash-alert dash-alert-error">
+      {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Campaign Name <span style="color:var(--dash-red)">*</span></label>
+        {{ form.name }}
+        {% if form.name.errors %}<div class="invalid-feedback">{{ form.name.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Subject <span style="color:var(--dash-red)">*</span></label>
+        {{ form.subject }}
+        {% if form.subject.errors %}<div class="invalid-feedback">{{ form.subject.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Status</label>
+        {{ form.status }}
+        {% if form.status.errors %}<div class="invalid-feedback">{{ form.status.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Schedule Date &amp; Time</label>
+        {{ form.scheduled_at }}
+        <small style="color:var(--dash-text-ter);font-size:0.65rem">Required when status is "Scheduled"</small>
+        {% if form.scheduled_at.errors %}<div class="invalid-feedback">{{ form.scheduled_at.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Email Body</label>
+        {{ form.body }}
+        <small style="color:var(--dash-text-ter);font-size:0.65rem">Rich text supported (HTML)</small>
+        {% if form.body.errors %}<div class="invalid-feedback">{{ form.body.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-border)">
+      <button type="submit" class="btn btn-primary rounded-pill px-4 glow-btn">
+        <i class="fas fa-check me-1"></i>{% if is_update %}Update{% else %}Create{% endif %} Campaign
+      </button>
+      <a href="{% url 'campaigns:list' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'campaigns/js/campaigns.js' %}"></script>
+{% endblock %}

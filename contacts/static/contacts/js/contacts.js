@@ -349,14 +349,4 @@
     if (fb) fb.remove();
   }
 
-  var deleteBtn = document.getElementById('confirmDeleteBtn');
-  var cancelBtn = document.getElementById('cancelDeleteBtn');
-  var deleteStage = document.getElementById('deleteStage');
-  var initialStage = document.getElementById('initialStage');
-
-  if (deleteBtn && cancelBtn && deleteStage && initialStage) {
-    deleteBtn.addEventListener('click', function () { initialStage.style.display = 'none'; deleteStage.style.display = 'block'; });
-    cancelBtn.addEventListener('click', function () { initialStage.style.display = 'block'; deleteStage.style.display = 'none'; });
-  }
-
 })();

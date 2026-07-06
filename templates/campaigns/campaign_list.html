@@ -1,0 +1,135 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Campaigns - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'campaigns/css/campaigns.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="campaigns-header">
+  <h2>Campaigns <span class="campaigns-count" id="campaignCount">({{ total_campaigns }})</span></h2>
+  <div class="campaigns-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="campaignSearch" placeholder="Search campaigns..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+      <span class="search-box-spinner" id="searchSpinner"></span>
+    </div>
+    <div class="filter-group">
+      <select id="statusFilter">
+        <option value="">All Status</option>
+        {% for s in status_choices %}
+        <option value="{{ s }}" {% if active_status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <a href="{% url 'campaigns:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn" id="addCampaignBtn">
+      <i class="fas fa-plus me-1"></i>Create Campaign
+    </a>
+  </div>
+</div>
+
+<div class="dash-card" id="campaignsCard">
+  {% if campaigns %}
+
+  <div class="dash-table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Campaign Name</th>
+          <th>Subject</th>
+          <th>Status</th>
+          <th>Scheduled</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="campaignsResults">
+        {% for campaign in campaigns %}
+        <tr>
+          <td>
+            <div class="dash-td-name">
+              <div>
+                <div class="lead-name">{{ campaign.name }}</div>
+              </div>
+            </div>
+          </td>
+          <td style="font-size:0.82rem;color:var(--dash-text-sec)">{{ campaign.subject }}</td>
+          <td><span class="campaign-status campaign-status--{{ campaign.status|lower }}">{{ campaign.status }}</span></td>
+          <td style="font-size:0.75rem;color:var(--dash-text-sec)">
+            {% if campaign.scheduled_at %}{{ campaign.scheduled_at|date:'M d, Y g:i A' }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="{% url 'campaigns:detail' campaign.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            {% if campaign.status != 'Sent' %}
+            <a href="{% url 'campaigns:update' campaign.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            {% endif %}
+            <a href="{% url 'campaigns:delete' campaign.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="campaigns-pagination" id="campaignsPagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% else %}
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
+    {% endif %}
+  </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="campaigns-empty">
+    <div class="campaigns-empty-icon"><i class="fas fa-bullhorn"></i></div>
+    <h4>No campaigns yet</h4>
+    <p>Create your first email campaign to start engaging your audience.</p>
+    <a href="{% url 'campaigns:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Create Your First Campaign
+    </a>
+  </div>
+  {% endif %}
+
+  <div class="search-no-results" id="searchNoResults" style="display:none">
+    <div class="search-no-results-icon"><i class="fas fa-search"></i></div>
+    <h4>No campaigns found</h4>
+    <p id="searchNoResultsMsg">Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'campaigns/js/campaigns.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ campaign.name }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'campaigns/css/campaigns.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="campaigns-header">
+  <h2>Campaign Details</h2>
+  <a href="{% url 'campaigns:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Campaigns</a>
+</div>
+
+<div class="dash-grid" style="grid-template-columns: 1fr 1fr; gap:20px">
+  <div class="dash-card">
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <div>
+        <h4 style="margin:0;font-size:1.05rem;font-weight:700">{{ campaign.name }}</h4>
+        <span class="campaign-status campaign-status--{{ campaign.status|lower }}" style="margin-top:4px;display:inline-block">{{ campaign.status }}</span>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Subject</div>
+      <div class="detail-value">{{ campaign.subject }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Status</div>
+      <div><span class="campaign-status campaign-status--{{ campaign.status|lower }}">{{ campaign.status }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Scheduled Date &amp; Time</div>
+      <div class="detail-value">
+        {% if campaign.scheduled_at %}{{ campaign.scheduled_at|date:'M d, Y' }} at {{ campaign.scheduled_at|date:'g:i A' }}{% else %}Not scheduled{% endif %}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Created</div>
+      <div class="detail-value">{{ campaign.created_at|date:'M d, Y' }} at {{ campaign.created_at|date:'g:i A' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Last Updated</div>
+      <div class="detail-value">{{ campaign.updated_at|date:'M d, Y' }} at {{ campaign.updated_at|date:'g:i A' }}</div>
+    </div>
+  </div>
+
+  <div class="dash-card">
+    <div class="detail-section">
+      <div class="detail-label">Email Content</div>
+      <div class="detail-body-card">{{ campaign.body|default:'No content written yet.' }}</div>
+    </div>
+
+    <div class="detail-actions">
+      {% if campaign.status != 'Sent' %}
+      <a href="{% url 'campaigns:update' campaign.pk %}" class="btn btn-primary rounded-pill px-3 glow-btn btn-sm">
+        <i class="fas fa-edit me-1"></i>Edit
+      </a>
+      {% endif %}
+      <a href="{% url 'campaigns:delete' campaign.pk %}" class="btn rounded-pill px-3 btn-sm" style="background:rgba(255,107,107,0.1);color:var(--dash-red);border:1px solid rgba(255,107,107,0.15)">
+        <i class="fas fa-trash me-1"></i>Delete
+      </a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'campaigns/js/campaigns.js' %}"></script>
+{% endblock %}

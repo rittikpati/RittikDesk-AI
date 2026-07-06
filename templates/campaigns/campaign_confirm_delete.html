@@ -1,33 +1,33 @@
 {% extends 'dashboard/base.html' %}
 {% load static %}
 
-{% block title %}Delete Contact - RittikDesk AI{% endblock %}
+{% block title %}Delete Campaign - RittikDesk AI{% endblock %}
 
 {% block extra_head %}
 {{ block.super }}
-<link href="{% static 'contacts/css/contacts.css' %}" rel="stylesheet">
+<link href="{% static 'campaigns/css/campaigns.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block dashboard_content %}
 
-<div class="contacts-header">
-  <h2>Delete Contact</h2>
-  <a href="{% url 'contacts:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Contacts</a>
+<div class="campaigns-header">
+  <h2>Delete Campaign</h2>
+  <a href="{% url 'campaigns:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Campaigns</a>
 </div>
 
 <div class="dash-card" style="max-width:480px">
   <div style="text-align:center;padding:10px 0" id="initialStage">
     <div class="bulk-modal-icon"><i class="fas fa-exclamation-triangle"></i></div>
-    <h4 style="font-weight:600;margin-bottom:6px">Delete "{{ contact.full_name }}"?</h4>
+    <h4 style="font-weight:600;margin-bottom:6px">Delete "{{ campaign.name }}"?</h4>
     <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:6px">
-      This action cannot be undone. This will permanently delete this contact and all associated data.
+      This action cannot be undone. This will permanently delete this campaign and all associated data.
     </p>
 
     <div class="d-flex gap-2 justify-content-center mt-4">
       <button type="button" class="btn rounded-pill px-4 glow-btn" id="confirmDeleteBtn" style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
-        <i class="fas fa-trash me-1"></i>Delete Contact
+        <i class="fas fa-trash me-1"></i>Delete Campaign
       </button>
-      <a href="{% url 'contacts:detail' contact.pk %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+      <a href="{% url 'campaigns:detail' campaign.pk %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
     </div>
   </div>
 
@@ -56,7 +56,7 @@
 
 {% block extra_scripts %}
 {{ block.super }}
-<script src="{% static 'contacts/js/contacts.js' %}"></script>
+<script src="{% static 'campaigns/js/campaigns.js' %}"></script>
 <script>
   (function () {
     var input = document.getElementById('deleteConfirmInput');
