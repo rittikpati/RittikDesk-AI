@@ -158,6 +158,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
 OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'openai/gpt-3.5-turbo')
+OPENROUTER_FALLBACK_MODELS = os.getenv('OPENROUTER_FALLBACK_MODELS', '')
 AI_TIMEOUT = int(os.getenv('AI_TIMEOUT', '30'))
 AI_TEMPERATURE = float(os.getenv('AI_TEMPERATURE', '0.7'))
 AI_MAX_TOKENS = int(os.getenv('AI_MAX_TOKENS', '2048'))

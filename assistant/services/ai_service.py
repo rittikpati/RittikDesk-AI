@@ -17,11 +17,6 @@ from .prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_MODELS = [
-    'google/gemma-4-26b-a4b:free',
-    'meta-llama/llama-3.3-70b-instruct:free',
-]
-
 
 class AIService:
     _session = None
@@ -42,9 +37,12 @@ class AIService:
     def _models(self):
         primary = settings.OPENROUTER_MODEL
         seen = [primary]
-        for model in FALLBACK_MODELS:
-            if model not in seen:
-                seen.append(model)
+        raw = settings.OPENROUTER_FALLBACK_MODELS
+        if raw:
+            for model in raw.split(','):
+                model = model.strip()
+                if model and model not in seen:
+                    seen.append(model)
         return seen
 
     def generate_response(self, messages):
@@ -56,19 +54,31 @@ class AIService:
             formatted.append({'role': msg.role, 'content': msg.content})
 
         models = self._models()
+        last_exception = None
 
         for idx, model in enumerate(models):
             if idx > 0:
-                logger.info('Falling back to model %s', model)
+                logger.info('Switching to fallback model: %s', model)
 
             try:
-                return self._call_model(model, formatted)
+                result = self._call_model(model, formatted)
+                logger.info('Successful response from model: %s', model)
+                return result
             except RateLimitError as e:
                 logger.warning('Model %s rate-limited: %s', model, e)
-                last_error = e
+                last_exception = e
             except ServerError as e:
                 logger.warning('Model %s server error: %s', model, e)
-                last_error = e
+                last_exception = e
+            except ModelNotFoundError as e:
+                logger.warning('Model %s not found or invalid: %s', model, e)
+                last_exception = e
+            except AIAssistantError as e:
+                if '400' in str(e) or 'invalid' in str(e).lower():
+                    logger.warning('Model %s rejected (HTTP 400): %s', model, e)
+                    last_exception = e
+                    continue
+                raise
 
         raise RateLimitError(
             'All free AI providers are currently busy. Please try again in a few minutes.'
