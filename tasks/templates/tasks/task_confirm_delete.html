@@ -1,0 +1,79 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Delete Task - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'tasks/css/tasks.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="tasks-header">
+  <h2>Delete Task</h2>
+  <a href="{% url 'tasks:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Tasks</a>
+</div>
+
+<div class="dash-card" style="max-width:480px">
+  <div style="text-align:center;padding:10px 0" id="initialStage">
+    <div class="bulk-modal-icon"><i class="fas fa-exclamation-triangle"></i></div>
+    <h4 style="font-weight:600;margin-bottom:6px">Delete "{{ task.title }}"?</h4>
+    <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:6px">
+      This action cannot be undone. This will permanently delete this task.
+    </p>
+
+    <div class="d-flex gap-2 justify-content-center mt-4">
+      <button type="button" class="btn rounded-pill px-4 glow-btn" id="confirmDeleteBtn" style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+        <i class="fas fa-trash me-1"></i>Delete Task
+      </button>
+      <a href="{% url 'tasks:detail' task.pk %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </div>
+
+  <div style="display:none;text-align:center;padding:10px 0" id="deleteStage">
+    <div class="bulk-modal-icon"><i class="fas fa-shield-halved"></i></div>
+    <h4 style="font-weight:600;margin-bottom:6px">Are you sure?</h4>
+    <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:6px">
+      Type <strong style="color:var(--dash-red)">delete</strong> to confirm.
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3" style="max-width:200px;margin:12px auto">
+        <input type="text" name="confirm" class="form-control text-center" id="deleteConfirmInput" placeholder="type delete" autocomplete="off" required>
+      </div>
+      <div class="d-flex gap-2 justify-content-center">
+        <button type="submit" class="btn rounded-pill px-4 glow-btn" id="deleteSubmitBtn" disabled style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+          <i class="fas fa-trash me-1"></i>Permanently Delete
+        </button>
+        <button type="button" class="btn btn-outline-light btn-sm rounded-pill px-3" id="cancelDeleteBtn">Go Back</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function () {
+  var input = document.getElementById('deleteConfirmInput');
+  var submit = document.getElementById('deleteSubmitBtn');
+  if (input && submit) {
+    input.addEventListener('input', function () {
+      submit.disabled = input.value.trim().toLowerCase() !== 'delete';
+    });
+  }
+
+  var deleteBtn = document.getElementById('confirmDeleteBtn');
+  var cancelBtn = document.getElementById('cancelDeleteBtn');
+  var deleteStage = document.getElementById('deleteStage');
+  var initialStage = document.getElementById('initialStage');
+  if (deleteBtn && cancelBtn && deleteStage && initialStage) {
+    deleteBtn.addEventListener('click', function () { initialStage.style.display = 'none'; deleteStage.style.display = 'block'; });
+    cancelBtn.addEventListener('click', function () { initialStage.style.display = 'block'; deleteStage.style.display = 'none'; });
+  }
+})();
+</script>
+{% endblock %}

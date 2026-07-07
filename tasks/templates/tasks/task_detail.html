@@ -1,0 +1,109 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ task.title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'tasks/css/tasks.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="tasks-header">
+  <h2>Task Details</h2>
+  <a href="{% url 'tasks:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Tasks</a>
+</div>
+
+<div class="dash-grid" style="grid-template-columns: 1fr 1fr; gap:20px">
+  <div class="dash-card">
+    <div class="d-flex align-items-start gap-3 mb-3">
+      <div>
+        <h4 style="margin:0;font-size:1.05rem;font-weight:700">{{ task.title }}</h4>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Status</div>
+      <div class="detail-value">
+        <span class="task-status task-status--{{ task.status }}">{{ task.get_status_display }}</span>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Priority</div>
+      <div class="detail-value">
+        <span class="task-priority task-priority--{{ task.priority }}">{{ task.get_priority_display }}</span>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Due Date</div>
+      <div class="detail-value">
+        {% if task.due_date %}
+        <span{% if task.is_overdue %} style="color:var(--dash-red)"{% endif %}>
+          {{ task.due_date|date:'l, F d, Y' }}
+        </span>
+        {% if task.is_overdue %}<span class="dash-badge" style="background:rgba(255,107,107,0.08);color:var(--dash-red);margin-left:6px">Overdue</span>{% endif %}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+
+    {% if task.due_time %}
+    <div class="detail-section">
+      <div class="detail-label">Due Time</div>
+      <div class="detail-value">{{ task.due_time|time:'g:i A' }}</div>
+    </div>
+    {% endif %}
+
+    <div class="detail-section">
+      <div class="detail-label">Created</div>
+      <div class="detail-value">{{ task.created_at|date:'M d, Y' }} at {{ task.created_at|date:'g:i A' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Last Updated</div>
+      <div class="detail-value">{{ task.updated_at|date:'M d, Y' }} at {{ task.updated_at|date:'g:i A' }}</div>
+    </div>
+  </div>
+
+  <div class="dash-card">
+    <div class="detail-section">
+      <div class="detail-label">Description</div>
+      <div class="detail-notes-card">{{ task.description|default:'No description provided.'|linebreaks }}</div>
+    </div>
+
+    {% if task.contact %}
+    <div class="detail-section">
+      <div class="detail-label">Linked Contact</div>
+      <div class="detail-value">
+        <a href="{% url 'contacts:detail' task.contact.pk %}" style="color:var(--dash-brand);text-decoration:none">
+          <i class="fas fa-address-book me-1"></i>{{ task.contact.full_name }}
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if task.lead %}
+    <div class="detail-section">
+      <div class="detail-label">Linked Lead</div>
+      <div class="detail-value">
+        <a href="{% url 'leads:detail' task.lead.pk %}" style="color:var(--dash-brand);text-decoration:none">
+          <i class="fas fa-tag me-1"></i>{{ task.lead.name }}
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="detail-actions" style="margin-top:20px">
+      <a href="{% url 'tasks:update' task.pk %}" class="btn btn-primary rounded-pill px-3 glow-btn btn-sm">
+        <i class="fas fa-edit me-1"></i>Edit
+      </a>
+      <a href="{% url 'tasks:delete' task.pk %}" class="btn rounded-pill px-3 btn-sm" style="background:rgba(255,107,107,0.1);color:var(--dash-red);border:1px solid rgba(255,107,107,0.15)">
+        <i class="fas fa-trash me-1"></i>Delete
+      </a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -192,6 +192,77 @@
   </div>
 </div>
 
+<!-- Task Stats -->
+<div class="dash-row">
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Total Tasks</div>
+          <div class="dash-stat-value"><span data-count="{{ total_tasks }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(108,99,255,0.12);color:#8B85FF"><i class="fas fa-tasks"></i></div>
+      </div>
+      <div class="dash-stat-footer up"><i class="fas fa-check-circle"></i> {{ completed_tasks }} <span>completed</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ total_tasks }}" data-color="#6C63FF"></canvas></div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Pending</div>
+          <div class="dash-stat-value"><span data-count="{{ pending_tasks }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(255,184,0,0.12);color:#FFB800"><i class="fas fa-hourglass"></i></div>
+      </div>
+      <div class="dash-stat-footer" style="color:var(--dash-yellow)"><i class="fas fa-clock"></i> {{ pending_tasks }} <span>awaiting action</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ pending_tasks }}" data-color="#FFB800"></canvas></div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">In Progress</div>
+          <div class="dash-stat-value"><span data-count="{{ in_progress_tasks }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(54,153,255,0.12);color:#3699FF"><i class="fas fa-spinner"></i></div>
+      </div>
+      <div class="dash-stat-footer up"><i class="fas fa-arrow-right"></i> {{ in_progress_tasks }} <span>in motion</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ in_progress_tasks }}" data-color="#3699FF"></canvas></div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Completed</div>
+          <div class="dash-stat-value"><span data-count="{{ completed_tasks }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(0,217,166,0.12);color:#00D9A6"><i class="fas fa-check-double"></i></div>
+      </div>
+      <div class="dash-stat-footer up"><i class="fas fa-check-circle"></i> {{ completed_tasks }} <span>done</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ completed_tasks }}" data-color="#00D9A6"></canvas></div>
+    </div>
+  </div>
+</div>
+<div class="dash-row">
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Overdue</div>
+          <div class="dash-stat-value" style="color:{% if overdue_tasks %}#FF6B6B{% endif %}"><span data-count="{{ overdue_tasks }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(255,107,107,0.12);color:#FF6B6B"><i class="fas fa-exclamation-triangle"></i></div>
+      </div>
+      <div class="dash-stat-footer" style="color:var(--dash-red)"><i class="fas fa-arrow-down"></i> {{ overdue_tasks }} <span>overdue</span></div>
+      <div class="dash-spark"><canvas class="dash-spark-canvas" data-values="0,0,0,0,0,0,0,0,0,0,0,0,0,{{ overdue_tasks }}" data-color="#FF6B6B"></canvas></div>
+    </div>
+  </div>
+</div>
+
 <!-- Charts -->
 <div class="dash-row">
   <div class="dash-col-7">
@@ -345,6 +416,10 @@
           <span class="dash-action-icon" style="background:rgba(0,217,166,0.1);color:#00D9A6"><i class="fas fa-bullhorn"></i></span>
           <span>New Campaign</span>
         </a>
+        <a href="{% url 'tasks:create' %}" class="dash-action">
+          <span class="dash-action-icon" style="background:rgba(0,180,216,0.1);color:#00B4D8"><i class="fas fa-check-circle"></i></span>
+          <span>New Task</span>
+        </a>
         <a href="{% url 'assistant:list' %}" class="dash-action">
           <span class="dash-action-icon" style="background:rgba(255,184,0,0.1);color:#FFB800"><i class="fas fa-robot"></i></span>
           <span>AI Assistant</span>
@@ -425,6 +500,48 @@
             {% empty %}
             <tr>
               <td colspan="5" style="text-align:center;color:var(--dash-text-ter);padding:20px">No campaigns yet. <a href="{% url 'campaigns:create' %}" style="color:var(--dash-brand)">Create your first campaign</a>.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Tasks -->
+<div class="dash-row">
+  <div class="dash-col-12">
+    <div class="dash-card dash-loaded">
+      <div class="dash-card-head">
+        <span class="dash-card-title">Recent Tasks</span>
+        <a href="{% url 'tasks:list' %}" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>Due Date</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in recent_tasks %}
+            <tr>
+              <td><div class="dash-td-name" style="gap:0"><span style="font-weight:600">{{ t.title }}</span></div></td>
+              <td><span class="task-priority task-priority--{{ t.priority }}">{{ t.get_priority_display }}</span></td>
+              <td><span class="task-status task-status--{{ t.status }}">{{ t.get_status_display }}</span></td>
+              <td style="font-size:0.75rem;color:{% if t.due_date and t.due_date < today and t.status != 'completed' %}var(--dash-red){% else %}var(--dash-text-sec){% endif %}">
+                {% if t.due_date %}{{ t.due_date|date:'M d' }}{% else %}—{% endif %}
+              </td>
+              <td><a href="{% url 'tasks:detail' t.pk %}" class="dash-td-btn"><i class="fas fa-eye"></i></a></td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" style="text-align:center;color:var(--dash-text-ter);padding:20px">No tasks yet. <a href="{% url 'tasks:create' %}" style="color:var(--dash-brand)">Create your first task</a>.</td>
             </tr>
             {% endfor %}
           </tbody>

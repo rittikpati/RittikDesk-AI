@@ -29,6 +29,10 @@
                 <i class="fas fa-bullhorn"></i>
                 <span>Campaigns</span>
             </a>
+            <a href="{% url 'tasks:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'tasks' %} active{% endif %}">
+                <i class="fas fa-check-circle"></i>
+                <span>Tasks</span>
+            </a>
         </div>
 
         <div class="dash-nav-section">

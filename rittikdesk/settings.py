@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'campaigns',
     'assistant',
     'analytics',
+    'tasks',
     'core',
 ]
 

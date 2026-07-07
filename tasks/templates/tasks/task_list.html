@@ -1,0 +1,241 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Tasks - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'tasks/css/tasks.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="tasks-header">
+  <h2>Tasks</h2>
+  <div class="tasks-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="taskSearch" placeholder="Search tasks..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+    </div>
+    <div class="filter-group">
+      <select id="statusFilter">
+        <option value="">All Status</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if active_status == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select id="priorityFilter">
+        <option value="">All Priority</option>
+        {% for val, label in priority_choices %}
+        <option value="{{ val }}" {% if active_priority == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select id="dateFilter">
+        <option value="">All Dates</option>
+        {% for val, label in date_filter_choices %}
+        <option value="{{ val }}" {% if active_due_date == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select id="sortSelect">
+        {% for val, label in sort_choices %}
+        <option value="{{ val }}" {% if sort_by == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <a href="{% url 'tasks:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+      <i class="fas fa-plus me-1"></i>Add Task
+    </a>
+  </div>
+</div>
+
+<div class="dash-card" id="tasksCard">
+  {% if tasks %}
+
+  <div class="dash-table-wrap">
+    <table class="dash-table tasks-table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Due Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="tasksResults">
+        {% for task in tasks %}
+        <tr class="{% if task.is_overdue %}task-overdue{% endif %}">
+          <td>
+            <div class="dash-td-name">
+              <div>
+                <div class="task-title">{{ task.title }}</div>
+                {% if task.description %}<div class="task-desc-preview">{{ task.description|truncatechars:60 }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="task-priority task-priority--{{ task.priority }}">{{ task.get_priority_display }}</span>
+          </td>
+          <td>
+            <span class="task-status task-status--{{ task.status }}">{{ task.get_status_display }}</span>
+          </td>
+          <td>
+            {% if task.due_date %}
+            <span class="task-due {% if task.is_overdue %}task-due--overdue{% endif %}">
+              {{ task.due_date|date:'M d, Y' }}
+              {% if task.due_time %}{{ task.due_time|time:'g:i A' }}{% endif %}
+            </span>
+            {% else %}
+            <span style="color:var(--dash-text-ter);font-size:0.7rem">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'tasks:detail' task.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            <a href="{% url 'tasks:update' task.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'tasks:delete' task.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="tasks-pagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&due_date={{ active_due_date|urlencode }}&sort={{ sort_by }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&due_date={{ active_due_date|urlencode }}&sort={{ sort_by }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% else %}
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&due_date={{ active_due_date|urlencode }}&sort={{ sort_by }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&due_date={{ active_due_date|urlencode }}&sort={{ sort_by }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&priority={{ active_priority|urlencode }}&due_date={{ active_due_date|urlencode }}&sort={{ sort_by }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
+    {% endif %}
+  </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="tasks-empty">
+    <div class="tasks-empty-icon"><i class="fas fa-check-circle"></i></div>
+    {% if search_query or active_status or active_priority or active_due_date %}
+    <h4>No tasks found</h4>
+    <p>Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+    {% else %}
+    <h4>No tasks yet</h4>
+    <p>Create your first task to stay organized.</p>
+    <a href="{% url 'tasks:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Create Your First Task
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function () {
+  function getParams() {
+    var params = new URLSearchParams(window.location.search);
+    return {
+      search: params.get('search') || '',
+      status: params.get('status') || '',
+      priority: params.get('priority') || '',
+      due_date: params.get('due_date') || '',
+      sort: params.get('sort') || 'newest',
+    };
+  }
+
+  function navigate() {
+    var p = getParams();
+    var search = document.getElementById('taskSearch');
+    var status = document.getElementById('statusFilter');
+    var priority = document.getElementById('priorityFilter');
+    var date = document.getElementById('dateFilter');
+    var sort = document.getElementById('sortSelect');
+    if (search) p.search = search.value.trim();
+    if (status) p.status = status.value;
+    if (priority) p.priority = priority.value;
+    if (date) p.due_date = date.value;
+    if (sort) p.sort = sort.value;
+    var qs = new URLSearchParams();
+    if (p.search) qs.set('search', p.search);
+    if (p.status) qs.set('status', p.status);
+    if (p.priority) qs.set('priority', p.priority);
+    if (p.due_date) qs.set('due_date', p.due_date);
+    if (p.sort !== 'newest') qs.set('sort', p.sort);
+    var url = '?' + qs.toString();
+    if (url !== window.location.search) window.location.href = url;
+  }
+
+  var searchInput = document.getElementById('taskSearch');
+  var searchClear = document.getElementById('searchClear');
+  var searchBox = searchInput ? searchInput.closest('.search-box') : null;
+  var statusFilter = document.getElementById('statusFilter');
+  var priorityFilter = document.getElementById('priorityFilter');
+  var dateFilter = document.getElementById('dateFilter');
+  var sortSelect = document.getElementById('sortSelect');
+  var clearBtn = document.getElementById('clearFiltersBtn');
+
+  function updateSearchUI() {
+    if (searchClear) {
+      searchClear.classList.toggle('is-visible', searchInput.value.length > 0);
+    }
+  }
+
+  if (searchInput) {
+    var timer = null;
+    searchInput.addEventListener('input', function () {
+      updateSearchUI();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(navigate, 400);
+    });
+    searchInput.addEventListener('focus', function () {
+      if (searchBox) searchBox.classList.add('is-focused');
+    });
+    searchInput.addEventListener('blur', function () {
+      if (searchBox) searchBox.classList.remove('is-focused');
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', function () {
+      if (searchInput) searchInput.value = '';
+      updateSearchUI();
+      navigate();
+    });
+  }
+
+  updateSearchUI();
+  if (statusFilter) statusFilter.addEventListener('change', navigate);
+  if (priorityFilter) priorityFilter.addEventListener('change', navigate);
+  if (dateFilter) dateFilter.addEventListener('change', navigate);
+  if (sortSelect) sortSelect.addEventListener('change', navigate);
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    window.location.href = '?';
+  });
+})();
+</script>
+{% endblock %}

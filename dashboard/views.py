@@ -3,6 +3,7 @@ from django.views.generic import TemplateView
 from contacts.models import Contact
 from leads.models import Lead
 from campaigns.models import Campaign
+from tasks.models import Task
 from django.utils import timezone
 from datetime import timedelta
 
@@ -13,6 +14,7 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         now = timezone.now()
+        today = now.date()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         user = self.request.user
 
@@ -32,6 +34,14 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         sent_campaigns = Campaign.objects.filter(owner=user, status='Sent').count()
         recent_campaigns = Campaign.objects.filter(owner=user)[:5]
 
+        tasks_qs = Task.objects.filter(owner=user)
+        total_tasks = tasks_qs.count()
+        pending_tasks = tasks_qs.filter(status='pending').count()
+        in_progress_tasks = tasks_qs.filter(status='in_progress').count()
+        completed_tasks = tasks_qs.filter(status='completed').count()
+        overdue_tasks = tasks_qs.filter(due_date__lt=today, status='pending').count()
+        recent_tasks = tasks_qs.order_by('-created_at')[:5]
+
         context['total_contacts'] = total_contacts
         context['new_contacts_month'] = new_contacts_month
         context['recent_contacts'] = recent_contacts
@@ -45,4 +55,11 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         context['scheduled_campaigns'] = scheduled_campaigns
         context['sent_campaigns'] = sent_campaigns
         context['recent_campaigns'] = recent_campaigns
+        context['total_tasks'] = total_tasks
+        context['pending_tasks'] = pending_tasks
+        context['in_progress_tasks'] = in_progress_tasks
+        context['completed_tasks'] = completed_tasks
+        context['overdue_tasks'] = overdue_tasks
+        context['recent_tasks'] = recent_tasks
+        context['today'] = today
         return context
