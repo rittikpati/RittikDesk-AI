@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 import requests
 from django.conf import settings
@@ -22,11 +23,14 @@ class AIService:
     _session = None
 
     def __init__(self):
-        self.api_key = settings.OPENROUTER_API_KEY
+        self.api_key = settings.OPENROUTER_API_KEY.strip() if settings.OPENROUTER_API_KEY else ''
         self.base_url = settings.OPENROUTER_BASE_URL
         self.timeout = settings.AI_TIMEOUT
         self.temperature = settings.AI_TEMPERATURE
         self.max_tokens = settings.AI_MAX_TOKENS
+
+        if not self.api_key or "your-openrouter" in self.api_key.lower():
+            logger.error("❌ OPENROUTER_API_KEY is missing or placeholder in .env!")
 
     @classmethod
     def _get_session(cls):
@@ -35,68 +39,110 @@ class AIService:
         return cls._session
 
     def _models(self):
+        """Primary + Fallback models (no duplicates)"""
         primary = settings.OPENROUTER_MODEL
-        seen = [primary]
-        raw = settings.OPENROUTER_FALLBACK_MODELS
-        if raw:
-            for model in raw.split(','):
-                model = model.strip()
-                if model and model not in seen:
-                    seen.append(model)
-        return seen
+        models = [primary]
+        raw = getattr(settings, 'OPENROUTER_FALLBACK_MODELS', [])
+        if isinstance(raw, str):
+            raw = [m.strip() for m in raw.split(',') if m.strip()]
+        for m in raw:
+            if m and m not in models:
+                models.append(m)
+        return models
 
     def generate_response(self, messages):
+        """Non-streaming version (backup)"""
         if not self.api_key:
-            raise AuthenticationError('API key is not configured. Please set OPENROUTER_API_KEY.')
+            return "AI service is not configured. Please contact admin."
+
+        formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+        for msg in messages:
+            formatted.append({'role': msg.role, 'content': msg.content})
+
+        for idx, model in enumerate(self._models()):
+            if idx > 0:
+                logger.info(f"🔄 Switching to fallback model: {model}")
+                time.sleep(1.5)
+
+            try:
+                return self._call_model(model, formatted)
+            except (RateLimitError, ServerError, AIAssistantError) as e:
+                logger.warning(f"Model {model} failed: {type(e).__name__}")
+                if idx == len(self._models()) - 1:
+                    return "Sorry, all AI models are currently busy. Please try again later."
+            except requests.exceptions.Timeout:
+                logger.warning(f"Model {model} timed out")
+                if idx == len(self._models()) - 1:
+                    return "The AI service timed out. Please try again."
+            except requests.exceptions.ConnectionError:
+                logger.warning(f"Model {model} connection error")
+                if idx == len(self._models()) - 1:
+                    return "Could not connect to the AI service. Please check your network."
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Model {model} request failed: {e}")
+                if idx == len(self._models()) - 1:
+                    return "An error occurred while contacting the AI service. Please try again."
+        return "An unexpected error occurred."
+
+    def generate_stream(self, messages):
+        """Streaming version with fallback support"""
+        if not self.api_key:
+            yield "AI service is not configured properly. Please add your OpenRouter API key in .env file."
+            return
 
         formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
         for msg in messages:
             formatted.append({'role': msg.role, 'content': msg.content})
 
         models = self._models()
-        last_exception = None
+        logger.info(f"🤖 Streaming request started with {len(models)} models. Primary: {models[0]}")
 
         for idx, model in enumerate(models):
             if idx > 0:
-                logger.info('Switching to fallback model: %s', model)
+                logger.info(f"🔄 Switching to fallback model: {model}")
+                time.sleep(2.0)   # Give some time before trying next model
 
             try:
-                result = self._call_model(model, formatted)
-                logger.info('Successful response from model: %s', model)
-                return result
-            except RateLimitError as e:
-                logger.warning('Model %s rate-limited: %s', model, e)
-                last_exception = e
-            except ServerError as e:
-                logger.warning('Model %s server error: %s', model, e)
-                last_exception = e
-            except ModelNotFoundError as e:
-                logger.warning('Model %s not found or invalid: %s', model, e)
-                last_exception = e
+                yield from self._call_model_stream(model, formatted)
+                logger.info(f"✅ Streaming successful with model: {model}")
+                return
+            except (RateLimitError, ServerError) as e:
+                logger.warning(f"⚠️ Model {model} failed (streaming): {e}")
+            except (AuthenticationError, ModelNotFoundError) as e:
+                logger.error(f"❌ Critical error with {model}: {e}")
+                yield "Authentication or model error occurred. Please check API key."
+                return
             except AIAssistantError as e:
-                if '400' in str(e) or 'invalid' in str(e).lower():
-                    logger.warning('Model %s rejected (HTTP 400): %s', model, e)
-                    last_exception = e
-                    continue
-                raise
+                logger.warning(f"Model {model} rejected: {e}")
+                if idx == len(models) - 1:
+                    yield "Sorry, I am unable to respond right now. All models are busy."
+                    return
+            except requests.exceptions.Timeout:
+                logger.warning(f"Model {model} timed out (streaming)")
+                if idx == len(models) - 1:
+                    yield "The AI service timed out. Please try again."
+                    return
+            except requests.exceptions.ConnectionError:
+                logger.warning(f"Model {model} connection error (streaming)")
+                if idx == len(models) - 1:
+                    yield "Could not connect to the AI service. Please check your network."
+                    return
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Model {model} request failed (streaming): {e}")
+                if idx == len(models) - 1:
+                    yield "An error occurred while contacting the AI service. Please try again."
+                    return
 
-        raise RateLimitError(
-            'All free AI providers are currently busy. Please try again in a few minutes.'
-        )
+        yield "Sorry, all AI models are currently unavailable. Please try again in a few minutes."
 
     def _call_model(self, model, formatted_messages):
+        """Normal (non-stream) call"""
         url = f'{self.base_url}/chat/completions'
-
-        masked_key = self.api_key[:8] + '...' if len(self.api_key) > 8 else '***'
-        logger.info('OpenRouter request URL: %s', url)
-        logger.info('OpenRouter model: %s', model)
-        logger.info('OpenRouter Authorization: Bearer %s', masked_key)
-
-        session = self._get_session()
         headers = {
             'Authorization': f'Bearer {self.api_key}',
             'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://rittikdesk.ai',
+            'HTTP-Referer': 'http://localhost:8000',
+            'X-Title': 'RittikDesk',
         }
 
         payload = {
@@ -106,94 +152,21 @@ class AIService:
             'max_tokens': self.max_tokens,
         }
 
-        try:
-            response = session.post(url, headers=headers, json=payload, timeout=self.timeout)
-        except requests.exceptions.Timeout:
-            raise TimeoutError('The AI service took too long to respond. Please try again.')
-        except requests.exceptions.ConnectionError:
-            raise NetworkError('Could not connect to the AI service. Please check your network.')
-        except requests.exceptions.RequestException as e:
-            logger.exception('AI request failed')
-            raise NetworkError(f'Network error occurred: {str(e)}')
-
-        logger.info('OpenRouter HTTP %s', response.status_code)
-
-        body = None
-        raw_text = response.text
-        try:
-            body = response.json()
-        except Exception:
-            pass
-
-        if body and isinstance(body, dict):
-            logger.info('OpenRouter response body (JSON):\n%s', json.dumps(body, indent=2))
-        else:
-            logger.info('OpenRouter response body (raw):\n%s', raw_text)
+        response = self._get_session().post(url, headers=headers, json=payload, timeout=self.timeout)
 
         if response.status_code != 200:
-            logger.error('OpenRouter error (HTTP %s) full response:\n%s', response.status_code, json.dumps(body, indent=2) if body and isinstance(body, dict) else raw_text)
+            self._handle_error(response, model)
 
-        def error_msg(fallback):
-            if body and isinstance(body, dict):
-                return body.get('error', {}).get('message', fallback)
-            return fallback
-
-        if response.status_code == 401:
-            raise AuthenticationError(f'OpenRouter (HTTP 401): {error_msg("Invalid API key.")}')
-        if response.status_code == 403:
-            raise AuthenticationError(f'OpenRouter (HTTP 403): {error_msg("Access denied.")}')
-        if response.status_code == 404:
-            raise ModelNotFoundError(f'OpenRouter (HTTP 404): {error_msg("Model not found.")}')
-        if response.status_code == 429:
-            raise RateLimitError(f'OpenRouter (HTTP 429): {error_msg("API rate limit exceeded.")}')
-        if response.status_code >= 500:
-            raise ServerError(f'OpenRouter (HTTP {response.status_code}): {error_msg("Server error.")}')
-
-        if response.status_code != 200:
-            raise AIAssistantError(f'OpenRouter (HTTP {response.status_code}): {raw_text[:1000]}')
-
-        return body['choices'][0]['message']['content']
-
-    def generate_stream(self, messages):
-        if not self.api_key:
-            raise AuthenticationError('API key is not configured. Please set OPENROUTER_API_KEY.')
-
-        formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-        for msg in messages:
-            formatted.append({'role': msg.role, 'content': msg.content})
-
-        models = self._models()
-        last_exception = None
-
-        for idx, model in enumerate(models):
-            if idx > 0:
-                logger.info('Switching to fallback model: %s', model)
-            try:
-                yield from self._call_model_stream(model, formatted)
-                return
-            except (RateLimitError, ServerError) as e:
-                logger.warning('Model %s failed in stream: %s', model, e)
-                last_exception = e
-            except AuthenticationError:
-                raise
-            except AIAssistantError as e:
-                if '400' in str(e) or 'invalid' in str(e).lower():
-                    logger.warning('Model %s rejected (HTTP 400) in stream: %s', model, e)
-                    last_exception = e
-                    continue
-                raise
-
-        raise RateLimitError(
-            'All free AI providers are currently busy. Please try again in a few minutes.'
-        )
+        return response.json()['choices'][0]['message']['content']
 
     def _call_model_stream(self, model, formatted_messages):
+        """Streaming call"""
         url = f'{self.base_url}/chat/completions'
-
         headers = {
             'Authorization': f'Bearer {self.api_key}',
             'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://rittikdesk.ai',
+            'HTTP-Referer': 'http://localhost:8000',
+            'X-Title': 'RittikDesk',
         }
 
         payload = {
@@ -204,57 +177,46 @@ class AIService:
             'stream': True,
         }
 
-        session = self._get_session()
-        try:
-            response = session.post(url, headers=headers, json=payload, stream=True, timeout=self.timeout)
-        except requests.exceptions.Timeout:
-            raise TimeoutError('The AI service took too long to respond. Please try again.')
-        except requests.exceptions.ConnectionError:
-            raise NetworkError('Could not connect to the AI service. Please check your network.')
-        except requests.exceptions.RequestException as e:
-            logger.exception('AI stream request failed')
-            raise NetworkError(f'Network error occurred: {str(e)}')
+        response = self._get_session().post(
+            url, headers=headers, json=payload, stream=True, timeout=self.timeout
+        )
 
         if response.status_code != 200:
-            body = None
-            raw_text = response.text
-            try:
-                body = response.json()
-            except Exception:
-                pass
-
-            def error_msg(fallback):
-                if body and isinstance(body, dict):
-                    return body.get('error', {}).get('message', fallback)
-                return fallback
-
-            if response.status_code == 401:
-                raise AuthenticationError(f'OpenRouter (HTTP 401): {error_msg("Invalid API key.")}')
-            if response.status_code == 403:
-                raise AuthenticationError(f'OpenRouter (HTTP 403): {error_msg("Access denied.")}')
-            if response.status_code == 404:
-                raise ModelNotFoundError(f'OpenRouter (HTTP 404): {error_msg("Model not found.")}')
-            if response.status_code == 429:
-                raise RateLimitError(f'OpenRouter (HTTP 429): {error_msg("API rate limit exceeded.")}')
-            if response.status_code >= 500:
-                raise ServerError(f'OpenRouter (HTTP {response.status_code}): {error_msg("Server error.")}')
-            raise AIAssistantError(f'OpenRouter (HTTP {response.status_code}): {raw_text[:1000]}')
+            self._handle_error(response, model)
 
         for line in response.iter_lines():
             if not line:
                 continue
             line = line.decode('utf-8')
             if line.startswith('data: '):
-                data = line[6:]
-                if data.strip() == '[DONE]':
+                data = line[6:].strip()
+                if data == '[DONE]':
                     break
                 try:
                     chunk = json.loads(data)
-                    choices = chunk.get('choices', [])
-                    if choices:
-                        delta = choices[0].get('delta', {})
-                        content = delta.get('content', '')
-                        if content:
-                            yield content
+                    content = chunk.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                    if content:
+                        yield content
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
+
+    def _handle_error(self, response, model):
+        """Centralized error handler"""
+        try:
+            body = response.json()
+            error_msg = body.get('error', {}).get('message', response.text[:150])
+        except Exception:
+            error_msg = response.text[:150]
+
+        logger.error(f"OpenRouter Error | Model: {model} | Status: {response.status_code} | Message: {error_msg}")
+
+        if response.status_code == 401:
+            raise AuthenticationError(f"Invalid API Key: {error_msg}")
+        if response.status_code == 404:
+            raise ModelNotFoundError(f"Model not found: {error_msg}")
+        if response.status_code == 429:
+            raise RateLimitError(f"Rate limit exceeded: {error_msg}")
+        if response.status_code >= 500:
+            raise ServerError(f"Server error: {error_msg}")
+
+        raise AIAssistantError(f"HTTP {response.status_code}: {error_msg}")

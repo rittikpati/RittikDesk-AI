@@ -353,7 +353,7 @@
 
     currentAbort = new AbortController();
 
-    if (!isRegen) addAssistantMessage();
+    addAssistantMessage();
 
     fetch(streamUrl, {
       method: 'POST',

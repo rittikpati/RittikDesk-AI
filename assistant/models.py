@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Category(models.Model):
@@ -44,6 +45,11 @@ class Message(models.Model):
 
     class Meta:
         ordering = ['created_at']
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.conversation_id:
+            Conversation.objects.filter(pk=self.conversation_id).update(updated_at=timezone.now())
 
     def __str__(self):
         return f'{self.role}: {self.content[:60]}'

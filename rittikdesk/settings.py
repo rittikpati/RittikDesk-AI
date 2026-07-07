@@ -6,12 +6,19 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-dev-key-change-in-production')
+# ========================= Django Core Settings =========================
+
+SECRET_KEY = os.getenv('SECRET_KEY')
+
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost,.vercel.app').split(',')]
+
+DJANGO_SETTINGS_MODULE = os.getenv('DJANGO_SETTINGS_MODULE', 'rittikdesk.settings')
+
+# ========================= Installed Apps & Middleware =========================
 
 INSTALLED_APPS = [
-    # Django core
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -51,6 +58,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'rittikdesk.urls'
+WSGI_APPLICATION = 'rittikdesk.wsgi.application'
 
 TEMPLATES = [
     {
@@ -67,40 +75,14 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'rittikdesk.wsgi.application'
+# ========================= Database Configuration =========================
 
-# Database - PostgreSQL with SQLite fallback for local dev
-USE_SQLITE_FALLBACK = os.getenv('USE_SQLITE_FALLBACK', 'False') == 'True'
+USE_SQLITE_FALLBACK = os.getenv('USE_SQLITE_FALLBACK', 'True') == 'True'
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 if DATABASE_URL:
-    import re
-    db_pattern = re.compile(r'postgres(?:ql)?://(.+?):(.+?)@(.+?):(\d+)/(.+?)(?:\?.*)?$')
-    match = db_pattern.match(DATABASE_URL)
-    if match:
-        db_user, db_password, db_host, db_port, db_name = match.groups()
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': db_name,
-                'USER': db_user,
-                'PASSWORD': db_password,
-                'HOST': db_host,
-                'PORT': db_port,
-                'OPTIONS': {'sslmode': 'require'},
-            }
-        }
-    else:
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': os.getenv('DB_NAME', 'rittikdesk'),
-                'USER': os.getenv('DB_USER', 'postgres'),
-                'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-                'HOST': os.getenv('DB_HOST', 'localhost'),
-                'PORT': os.getenv('DB_PORT', '5432'),
-            }
-        }
+    import dj_database_url
+    DATABASES = {'default': dj_database_url.config(default=DATABASE_URL)}
 elif USE_SQLITE_FALLBACK:
     DATABASES = {
         'default': {
@@ -120,6 +102,8 @@ else:
         }
     }
 
+# ========================= Security & Auth =========================
+
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -129,10 +113,22 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# Production Security Settings
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# ========================= Internationalization =========================
+
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
+
+# ========================= Static & Media Files =========================
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
@@ -142,7 +138,8 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Cloudinary (graceful fallback - runs without it)
+# ========================= Cloudinary (Optional) =========================
+
 CLOUDINARY_CLOUD_NAME = os.getenv('CLOUDINARY_CLOUD_NAME')
 if CLOUDINARY_CLOUD_NAME:
     CLOUDINARY_STORAGE = {
@@ -152,26 +149,30 @@ if CLOUDINARY_CLOUD_NAME:
     }
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# ========================= OpenRouter AI Configuration =========================
 
-# OpenRouter AI
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'openai/gpt-3.5-turbo')
-OPENROUTER_FALLBACK_MODELS = os.getenv('OPENROUTER_FALLBACK_MODELS', '')
-AI_TIMEOUT = int(os.getenv('AI_TIMEOUT', '30'))
-AI_TEMPERATURE = float(os.getenv('AI_TEMPERATURE', '0.7'))
-AI_MAX_TOKENS = int(os.getenv('AI_MAX_TOKENS', '2048'))
 
-# DRF + JWT
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b:free')
+
+OPENROUTER_FALLBACK_MODELS = [
+    m.strip() for m in os.getenv('OPENROUTER_FALLBACK_MODELS', '').split(',')
+    if m.strip()
+]
+
+AI_TIMEOUT = int(os.getenv('AI_TIMEOUT', 30))
+AI_TEMPERATURE = float(os.getenv('AI_TEMPERATURE', 0.7))
+AI_MAX_TOKENS = int(os.getenv('AI_MAX_TOKENS', 2048))
+
+# ========================= DRF + JWT =========================
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
-    ),
+    'DEFAULT_PERMISSION_CLASSES': ('rest_framework.permissions.IsAuthenticated',),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
 }
@@ -184,13 +185,17 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer', 'JWT'),
 }
 
-# CORS
+# ========================= CORS & CSRF =========================
+
 CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:8000',
     'http://localhost:8000',
 ]
 
-# Email (console backend for dev)
+CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app']
+
+# ========================= Email, Logging & Others =========================
+
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 LOGIN_URL = 'accounts:login'
@@ -199,18 +204,19 @@ LOGOUT_REDIRECT_URL = 'core:landing'
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
+        'console': {'class': 'logging.StreamHandler'},
     },
     'loggers': {
         'assistant.services.ai_service': {
             'handlers': ['console'],
             'level': 'INFO',
+            'propagate': True,
         },
     },
 }
