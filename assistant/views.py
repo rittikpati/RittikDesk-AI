@@ -1,9 +1,10 @@
 import json
+import logging
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView, DetailView, CreateView, DeleteView, View, UpdateView
 from django.urls import reverse_lazy, reverse
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, StreamingHttpResponse
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect
 
@@ -12,6 +13,8 @@ from .forms import MessageForm
 from .services.ai_service import AIService
 from .services.exceptions import AIAssistantError
 from .utils import sanitize_message, truncate_title
+
+logger = logging.getLogger(__name__)
 
 
 class ChatListView(LoginRequiredMixin, ListView):
@@ -127,3 +130,58 @@ class ChatMessageView(LoginRequiredMixin, View):
             return JsonResponse({'reply': reply, 'conversation_id': conversation.pk})
         except AIAssistantError as e:
             return JsonResponse({'error': str(e)}, status=503)
+
+
+class ChatMessageStreamView(LoginRequiredMixin, View):
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        conversation = get_object_or_404(Conversation, pk=pk, user=request.user)
+
+        is_regenerate = request.POST.get('regenerate') == 'true'
+
+        if not is_regenerate:
+            form = MessageForm(request.POST)
+            if not form.is_valid():
+                return JsonResponse({'error': 'Invalid message.'}, status=400)
+            content = sanitize_message(form.cleaned_data['message'])
+            Message.objects.create(conversation=conversation, role='user', content=content)
+
+            if conversation.title == 'New Chat':
+                conversation.title = truncate_title(content)
+                conversation.save(update_fields=['title'])
+
+        def event_stream():
+            full_content = ''
+            saved = False
+            try:
+                history = list(conversation.messages.all())
+                service = AIService()
+                for token in service.generate_stream(history):
+                    full_content += token
+                    yield f'data: {json.dumps({"t": token})}\n\n'
+
+                Message.objects.create(
+                    conversation=conversation, role='assistant', content=full_content
+                )
+                saved = True
+                yield f'data: {json.dumps({"done": True})}\n\n'
+            except AIAssistantError as e:
+                logger.error('Stream AI error: %s', e)
+                yield f'data: {json.dumps({"e": str(e)})}\n\n'
+            except Exception as e:
+                logger.exception('Stream unexpected error')
+                yield f'data: {json.dumps({"e": "An unexpected error occurred."})}\n\n'
+            finally:
+                if full_content and not saved:
+                    try:
+                        Message.objects.create(
+                            conversation=conversation, role='assistant', content=full_content
+                        )
+                    except Exception:
+                        logger.exception('Failed to save partial streamed message')
+
+        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response

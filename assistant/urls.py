@@ -11,4 +11,5 @@ urlpatterns = [
     path('<int:pk>/rename/', views.ChatRenameView.as_view(), name='rename'),
     path('<int:pk>/export/', views.ChatExportView.as_view(), name='export'),
     path('<int:pk>/message/', views.ChatMessageView.as_view(), name='message'),
+    path('<int:pk>/stream/', views.ChatMessageStreamView.as_view(), name='message_stream'),
 ]

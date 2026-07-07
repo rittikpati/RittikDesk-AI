@@ -153,3 +153,108 @@ class AIService:
             raise AIAssistantError(f'OpenRouter (HTTP {response.status_code}): {raw_text[:1000]}')
 
         return body['choices'][0]['message']['content']
+
+    def generate_stream(self, messages):
+        if not self.api_key:
+            raise AuthenticationError('API key is not configured. Please set OPENROUTER_API_KEY.')
+
+        formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+        for msg in messages:
+            formatted.append({'role': msg.role, 'content': msg.content})
+
+        models = self._models()
+        last_exception = None
+
+        for idx, model in enumerate(models):
+            if idx > 0:
+                logger.info('Switching to fallback model: %s', model)
+            try:
+                yield from self._call_model_stream(model, formatted)
+                return
+            except (RateLimitError, ServerError) as e:
+                logger.warning('Model %s failed in stream: %s', model, e)
+                last_exception = e
+            except AuthenticationError:
+                raise
+            except AIAssistantError as e:
+                if '400' in str(e) or 'invalid' in str(e).lower():
+                    logger.warning('Model %s rejected (HTTP 400) in stream: %s', model, e)
+                    last_exception = e
+                    continue
+                raise
+
+        raise RateLimitError(
+            'All free AI providers are currently busy. Please try again in a few minutes.'
+        )
+
+    def _call_model_stream(self, model, formatted_messages):
+        url = f'{self.base_url}/chat/completions'
+
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://rittikdesk.ai',
+        }
+
+        payload = {
+            'model': model,
+            'messages': formatted_messages,
+            'temperature': self.temperature,
+            'max_tokens': self.max_tokens,
+            'stream': True,
+        }
+
+        session = self._get_session()
+        try:
+            response = session.post(url, headers=headers, json=payload, stream=True, timeout=self.timeout)
+        except requests.exceptions.Timeout:
+            raise TimeoutError('The AI service took too long to respond. Please try again.')
+        except requests.exceptions.ConnectionError:
+            raise NetworkError('Could not connect to the AI service. Please check your network.')
+        except requests.exceptions.RequestException as e:
+            logger.exception('AI stream request failed')
+            raise NetworkError(f'Network error occurred: {str(e)}')
+
+        if response.status_code != 200:
+            body = None
+            raw_text = response.text
+            try:
+                body = response.json()
+            except Exception:
+                pass
+
+            def error_msg(fallback):
+                if body and isinstance(body, dict):
+                    return body.get('error', {}).get('message', fallback)
+                return fallback
+
+            if response.status_code == 401:
+                raise AuthenticationError(f'OpenRouter (HTTP 401): {error_msg("Invalid API key.")}')
+            if response.status_code == 403:
+                raise AuthenticationError(f'OpenRouter (HTTP 403): {error_msg("Access denied.")}')
+            if response.status_code == 404:
+                raise ModelNotFoundError(f'OpenRouter (HTTP 404): {error_msg("Model not found.")}')
+            if response.status_code == 429:
+                raise RateLimitError(f'OpenRouter (HTTP 429): {error_msg("API rate limit exceeded.")}')
+            if response.status_code >= 500:
+                raise ServerError(f'OpenRouter (HTTP {response.status_code}): {error_msg("Server error.")}')
+            raise AIAssistantError(f'OpenRouter (HTTP {response.status_code}): {raw_text[:1000]}')
+
+        for line in response.iter_lines():
+            if not line:
+                continue
+            line = line.decode('utf-8')
+            if line.startswith('data: '):
+                data = line[6:]
+                if data.strip() == '[DONE]':
+                    break
+                try:
+                    chunk = json.loads(data)
+                    choices = chunk.get('choices', [])
+                    if choices:
+                        delta = choices[0].get('delta', {})
+                        content = delta.get('content', '')
+                        if content:
+                            yield content
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue

@@ -7,6 +7,8 @@
 {{ block.super }}
 <link href="{% static 'assistant/css/assistant.css' %}" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
 {% endblock %}
 
 {% block dashboard_content %}
@@ -58,6 +60,12 @@
         <div class="chat-msg-content">
           <div class="chat-msg-text">{% if msg.role == 'assistant' %}{{ msg.content|linebreaks }}{% else %}{{ msg.content }}{% endif %}</div>
           <div class="chat-msg-time">{{ msg.created_at|date:'g:i A' }}</div>
+          {% if msg.role == 'assistant' %}
+          <div class="chat-msg-actions visible">
+            <button class="chat-msg-action-btn chat-copy-response-btn" onclick="window.copyResponse(this)" title="Copy response"><i class="fas fa-copy"></i> Copy</button>
+            <button class="chat-msg-action-btn chat-regenerate-btn" onclick="window.regenerate(this)" title="Regenerate"><i class="fas fa-rotate"></i> Regenerate</button>
+          </div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -68,12 +76,15 @@
     </div>
 
     <div class="chat-input-area">
-      <form class="chat-form" id="chatForm" method="post" action="{% url 'assistant:message' active_conversation.pk %}">
+      <form class="chat-form" id="chatForm" method="post" action="{% url 'assistant:message' active_conversation.pk %}" data-stream-url="{% url 'assistant:message_stream' active_conversation.pk %}">
         {% csrf_token %}
         <div class="chat-input-wrap">
           {{ form.message }}
           <button type="submit" class="chat-send-btn" id="chatSendBtn">
             <i class="fas fa-arrow-up"></i>
+          </button>
+          <button type="button" class="chat-stop-btn" id="chatStopBtn" title="Stop generating">
+            <i class="fas fa-square"></i>
           </button>
         </div>
       </form>
