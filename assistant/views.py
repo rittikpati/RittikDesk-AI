@@ -3,18 +3,32 @@ import logging
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView, DetailView, CreateView, DeleteView, View, UpdateView
-from django.urls import reverse_lazy, reverse
+from django.urls import reverse_lazy
 from django.http import JsonResponse, HttpResponse, StreamingHttpResponse
-from django.contrib import messages
+from django.db.models import Max
 from django.shortcuts import get_object_or_404, redirect
 
-from .models import Conversation, Message
+from .models import Conversation, Message, Category
 from .forms import MessageForm
 from .services.ai_service import AIService
 from .services.exceptions import AIAssistantError
 from .utils import sanitize_message, truncate_title
 
 logger = logging.getLogger(__name__)
+
+
+def _common_context(user):
+    conversations = Conversation.objects.filter(user=user)
+    pinned = conversations.filter(pinned=True)
+    categories = list(Category.objects.filter(user=user))
+    category_data = [(c, conversations.filter(category=c, pinned=False)) for c in categories]
+    general = conversations.filter(category__isnull=True, pinned=False)
+    return {
+        'categories': categories,
+        'category_data': category_data,
+        'pinned_conversations': pinned,
+        'uncategorized_conversations': general,
+    }
 
 
 class ChatListView(LoginRequiredMixin, ListView):
@@ -28,6 +42,7 @@ class ChatListView(LoginRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['form'] = MessageForm()
+        context.update(_common_context(self.request.user))
         return context
 
 
@@ -44,6 +59,7 @@ class ChatDetailView(LoginRequiredMixin, DetailView):
         context['conversations'] = Conversation.objects.filter(user=self.request.user)
         context['form'] = MessageForm()
         context['messages'] = self.object.messages.all()
+        context.update(_common_context(self.request.user))
         return context
 
 
@@ -185,3 +201,124 @@ class ChatMessageStreamView(LoginRequiredMixin, View):
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'
         return response
+
+
+class ChatEditMessageView(LoginRequiredMixin, View):
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        message = get_object_or_404(Message, pk=pk, conversation__user=request.user, role='user')
+        content = sanitize_message(request.POST.get('message', ''))
+        if not content:
+            return JsonResponse({'error': 'Message cannot be empty.'}, status=400)
+
+        message.content = content
+        message.save(update_fields=['content'])
+        conversation = message.conversation
+        conversation.messages.filter(pk__gt=pk).delete()
+
+        if conversation.title == 'New Chat':
+            conversation.title = truncate_title(content)
+            conversation.save(update_fields=['title'])
+
+        def event_stream():
+            full_content = ''
+            saved = False
+            try:
+                history = list(conversation.messages.all())
+                service = AIService()
+                for token in service.generate_stream(history):
+                    full_content += token
+                    yield f'data: {json.dumps({"t": token})}\n\n'
+
+                Message.objects.create(
+                    conversation=conversation, role='assistant', content=full_content
+                )
+                saved = True
+                yield f'data: {json.dumps({"done": True})}\n\n'
+            except AIAssistantError as e:
+                logger.error('Edit stream AI error: %s', e)
+                yield f'data: {json.dumps({"e": str(e)})}\n\n'
+            except Exception as e:
+                logger.exception('Edit stream unexpected error')
+                yield f'data: {json.dumps({"e": "An unexpected error occurred."})}\n\n'
+            finally:
+                if full_content and not saved:
+                    try:
+                        Message.objects.create(
+                            conversation=conversation, role='assistant', content=full_content
+                        )
+                    except Exception:
+                        logger.exception('Failed to save edited streamed message')
+
+        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
+
+
+class ChatPinToggleView(LoginRequiredMixin, View):
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        conversation = get_object_or_404(Conversation, pk=pk, user=request.user)
+        conversation.pinned = not conversation.pinned
+        conversation.save(update_fields=['pinned'])
+        return JsonResponse({'pinned': conversation.pinned})
+
+
+class CategoryCreateView(LoginRequiredMixin, View):
+    http_method_names = ['post']
+
+    def post(self, request):
+        name = request.POST.get('name', '').strip()
+        if not name:
+            return JsonResponse({'error': 'Name is required'}, status=400)
+        max_order = Category.objects.filter(user=request.user).aggregate(m=Max('order'))['m'] or 0
+        cat = Category.objects.create(user=request.user, name=name, order=max_order + 1)
+        return JsonResponse({'id': cat.pk, 'name': cat.name, 'order': cat.order})
+
+
+class CategoryRenameView(LoginRequiredMixin, UpdateView):
+    model = Category
+    fields = ['name']
+    http_method_names = ['post']
+
+    def get_queryset(self):
+        return Category.objects.filter(user=self.request.user)
+
+    def form_valid(self, form):
+        self.object = form.save()
+        return JsonResponse({'id': self.object.pk, 'name': self.object.name})
+
+    def form_invalid(self, form):
+        return JsonResponse({'error': 'Invalid name'}, status=400)
+
+
+class CategoryDeleteView(LoginRequiredMixin, DeleteView):
+    model = Category
+    http_method_names = ['post']
+
+    def get_queryset(self):
+        return Category.objects.filter(user=self.request.user)
+
+    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        self.object.conversations.update(category=None)
+        self.object.delete()
+        return JsonResponse({'deleted': True})
+
+
+class ConversationMoveCategoryView(LoginRequiredMixin, View):
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        conversation = get_object_or_404(Conversation, pk=pk, user=request.user)
+        category_id = request.POST.get('category_id')
+        if category_id:
+            category = get_object_or_404(Category, pk=category_id, user=request.user)
+            conversation.category = category
+        else:
+            conversation.category = None
+        conversation.save(update_fields=['category'])
+        return JsonResponse({'success': True})

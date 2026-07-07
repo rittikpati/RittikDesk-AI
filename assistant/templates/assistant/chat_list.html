@@ -7,7 +7,6 @@
 {{ block.super }}
 <link href="{% static 'assistant/css/assistant.css' %}" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
 {% endblock %}
 
@@ -21,27 +20,108 @@
         <span>New Chat</span>
       </button>
     </div>
-    <div class="chat-sidebar-body">
-      {% for conv in conversations %}
-      <div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}">
-        <div class="chat-conv-link" onclick="window.location.href='{% url 'assistant:chat' conv.pk %}'">
-          <i class="fas fa-comment"></i>
-          <span class="chat-conv-title">{{ conv.title|truncatechars:30 }}</span>
+
+    <div class="chat-sidebar-search">
+      <i class="fas fa-search chat-search-icon"></i>
+      <input type="text" class="chat-search-input" id="chatSidebarSearch" placeholder="Search conversations..." autocomplete="off">
+    </div>
+
+    <div class="chat-sidebar-body" id="chatSidebarBody">
+      {% if pinned_conversations %}
+      <div class="chat-pinned-section">
+        <div class="chat-pinned-header">
+          <i class="fas fa-thumbtack"></i>
+          <span>Pinned</span>
         </div>
-        <div class="chat-conv-actions">
-          <button class="chat-conv-btn chat-rename-btn" title="Rename" data-id="{{ conv.pk }}">
-            <i class="fas fa-pencil"></i>
-          </button>
-          <button class="chat-conv-btn chat-delete-btn" title="Delete" data-id="{{ conv.pk }}">
-            <i class="fas fa-trash"></i>
-          </button>
+        <div class="chat-category-items">
+          {% for conv in pinned_conversations %}
+          <div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}" draggable="true">
+            <div class="chat-conv-link" onclick="window.location.href='{% url 'assistant:chat' conv.pk %}'">
+              <i class="fas fa-comment"></i>
+              <span class="chat-conv-title">{{ conv.title|truncatechars:30 }}</span>
+            </div>
+            <div class="chat-conv-actions">
+              <button class="chat-conv-btn chat-pin-btn pinned" title="Unpin">
+                <i class="fas fa-thumbtack"></i>
+              </button>
+              <button class="chat-conv-btn chat-rename-btn" title="Rename" data-id="{{ conv.pk }}">
+                <i class="fas fa-pencil"></i>
+              </button>
+              <button class="chat-conv-btn chat-delete-btn" title="Delete" data-id="{{ conv.pk }}">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          {% endfor %}
         </div>
       </div>
-      {% empty %}
-      <div class="chat-sidebar-empty">
-        <p>No conversations yet.</p>
+      <div class="chat-section-divider"></div>
+      {% endif %}
+
+      {% for cat, convs in category_data %}
+      <div class="chat-category" data-category-id="{{ cat.pk }}">
+        <div class="chat-category-header">
+          <button class="chat-category-toggle"><i class="fas fa-chevron-down"></i></button>
+          <span class="chat-category-name">{{ cat.name }}</span>
+          <div class="chat-category-actions">
+            <button class="chat-category-btn chat-category-rename-btn" title="Rename"><i class="fas fa-pencil"></i></button>
+            <button class="chat-category-btn chat-category-delete-btn danger" title="Delete"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+        <div class="chat-category-items">
+          {% for conv in convs %}
+          <div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}" draggable="true">
+            <div class="chat-conv-link" onclick="window.location.href='{% url 'assistant:chat' conv.pk %}'">
+              <i class="fas fa-comment"></i>
+              <span class="chat-conv-title">{{ conv.title|truncatechars:30 }}</span>
+            </div>
+            <div class="chat-conv-actions">
+              <button class="chat-conv-btn chat-pin-btn" title="Pin"><i class="fas fa-thumbtack"></i></button>
+              <button class="chat-conv-btn chat-rename-btn" title="Rename" data-id="{{ conv.pk }}"><i class="fas fa-pencil"></i></button>
+              <button class="chat-conv-btn chat-delete-btn" title="Delete" data-id="{{ conv.pk }}"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+          {% empty %}
+          <div class="chat-sidebar-empty"><p>Drop conversations here</p></div>
+          {% endfor %}
+        </div>
       </div>
       {% endfor %}
+
+      {% if uncategorized_conversations %}
+      <div class="chat-category" data-category-id="">
+        <div class="chat-category-header">
+          <button class="chat-category-toggle"><i class="fas fa-chevron-down"></i></button>
+          <span class="chat-category-name">General</span>
+        </div>
+        <div class="chat-category-items">
+          {% for conv in uncategorized_conversations %}
+          <div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}" draggable="true">
+            <div class="chat-conv-link" onclick="window.location.href='{% url 'assistant:chat' conv.pk %}'">
+              <i class="fas fa-comment"></i>
+              <span class="chat-conv-title">{{ conv.title|truncatechars:30 }}</span>
+            </div>
+            <div class="chat-conv-actions">
+              <button class="chat-conv-btn chat-pin-btn" title="Pin"><i class="fas fa-thumbtack"></i></button>
+              <button class="chat-conv-btn chat-rename-btn" title="Rename" data-id="{{ conv.pk }}"><i class="fas fa-pencil"></i></button>
+              <button class="chat-conv-btn chat-delete-btn" title="Delete" data-id="{{ conv.pk }}"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if not pinned_conversations and not uncategorized_conversations and not category_data %}
+      <div class="chat-sidebar-empty"><p>No conversations yet.</p></div>
+      {% endif %}
+    </div>
+
+    <div class="chat-sidebar-footer">
+      <button class="chat-add-category-btn" id="addCategoryBtn">
+        <i class="fas fa-plus"></i>
+        <span>Add Category</span>
+      </button>
     </div>
   </aside>
 
@@ -49,7 +129,7 @@
     {% if active_conversation %}
     <div class="chat-messages" id="chatMessages">
       {% for msg in messages %}
-      <div class="chat-msg {% if msg.role == 'user' %}chat-msg-user{% else %}chat-msg-assistant{% endif %}" data-role="{{ msg.role }}">
+      <div class="chat-msg {% if msg.role == 'user' %}chat-msg-user{% else %}chat-msg-assistant{% endif %}" data-role="{{ msg.role }}"{% if msg.role == 'user' %} data-pk="{{ msg.pk }}"{% endif %}>
         <div class="chat-msg-avatar">
           {% if msg.role == 'user' %}
           <i class="fas fa-user"></i>
@@ -60,7 +140,11 @@
         <div class="chat-msg-content">
           <div class="chat-msg-text">{% if msg.role == 'assistant' %}{{ msg.content|linebreaks }}{% else %}{{ msg.content }}{% endif %}</div>
           <div class="chat-msg-time">{{ msg.created_at|date:'g:i A' }}</div>
-          {% if msg.role == 'assistant' %}
+          {% if msg.role == 'user' %}
+          <button class="chat-msg-action-btn chat-edit-btn" onclick="var el=this.closest('.chat-msg');if(window.editMessage)editMessage(el);">
+            <i class="fas fa-pencil"></i> Edit
+          </button>
+          {% else %}
           <div class="chat-msg-actions visible">
             <button class="chat-msg-action-btn chat-copy-response-btn" onclick="window.copyResponse(this)" title="Copy response"><i class="fas fa-copy"></i> Copy</button>
             <button class="chat-msg-action-btn chat-regenerate-btn" onclick="window.regenerate(this)" title="Regenerate"><i class="fas fa-rotate"></i> Regenerate</button>
@@ -80,25 +164,42 @@
         {% csrf_token %}
         <div class="chat-input-wrap">
           {{ form.message }}
-          <button type="submit" class="chat-send-btn" id="chatSendBtn">
-            <i class="fas fa-arrow-up"></i>
-          </button>
-          <button type="button" class="chat-stop-btn" id="chatStopBtn" title="Stop generating">
-            <i class="fas fa-square"></i>
-          </button>
+          <button type="submit" class="chat-send-btn" id="chatSendBtn"><i class="fas fa-arrow-up"></i></button>
+          <button type="button" class="chat-stop-btn" id="chatStopBtn" title="Stop generating"><i class="fas fa-square"></i></button>
         </div>
       </form>
       <div class="chat-footer-text">AI responses are generated by OpenRouter. Verify important information.</div>
     </div>
     {% else %}
-    <div class="chat-empty">
-      <div class="chat-empty-icon"><i class="fas fa-robot"></i></div>
+    <div class="chat-welcome">
+      <div class="chat-welcome-icon"><i class="fas fa-robot"></i></div>
       <h2>How can I help you today?</h2>
-      <p>Ask me anything about your CRM, contacts, leads, or campaigns.</p>
-      <div class="chat-empty-actions">
-        <button class="chat-empty-btn" onclick="window.location.href='{% url 'assistant:new' %}'">
-          <i class="fas fa-plus"></i> Start a conversation
-        </button>
+      <p class="chat-welcome-sub">Ask me anything about your CRM, contacts, leads, or campaigns. I'm here to assist with insights, automation, and more.</p>
+      <div class="chat-suggestions">
+        <div class="chat-suggestion-card" data-prompt="Explain this code">
+          <i class="fas fa-code"></i>
+          <span>Explain this code</span>
+        </div>
+        <div class="chat-suggestion-card" data-prompt="Fix my Django bug">
+          <i class="fas fa-bug"></i>
+          <span>Fix my Django bug</span>
+        </div>
+        <div class="chat-suggestion-card" data-prompt="Write a professional email">
+          <i class="fas fa-envelope"></i>
+          <span>Write a professional email</span>
+        </div>
+        <div class="chat-suggestion-card" data-prompt="Generate SQL query">
+          <i class="fas fa-database"></i>
+          <span>Generate SQL query</span>
+        </div>
+        <div class="chat-suggestion-card" data-prompt="Summarize a document">
+          <i class="fas fa-file-alt"></i>
+          <span>Summarize a document</span>
+        </div>
+        <div class="chat-suggestion-card" data-prompt="Brainstorm startup ideas">
+          <i class="fas fa-lightbulb"></i>
+          <span>Brainstorm startup ideas</span>
+        </div>
       </div>
     </div>
     {% endif %}
