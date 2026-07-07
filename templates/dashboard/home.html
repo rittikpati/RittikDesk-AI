@@ -4,6 +4,7 @@
 {% block extra_head %}
 {{ block.super }}
 <link href="{% static 'campaigns/css/campaigns.css' %}" rel="stylesheet">
+<link href="{% static 'assistant/css/assistant.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block dashboard_content %}
@@ -247,6 +248,38 @@
   </div>
 </div>
 
+<!-- AI CRM Insights -->
+<div class="dash-row">
+  <div class="dash-col-7">
+    <div class="dash-card dash-loaded" id="aiInsightsWidget">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-brain" style="color:var(--dash-brand);margin-right:6px"></i> AI CRM Insights</span>
+        <button class="dash-card-link ai-refresh-btn" onclick="loadCRMInsights()"><i class="fas fa-rotate"></i> Refresh</button>
+      </div>
+      <div id="aiInsightsContent">
+        <div class="ai-widget-loading">
+          <div class="ai-spinner"></div>
+          <span>Analyzing your CRM data...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-5">
+    <div class="dash-card dash-loaded" id="aiRecsWidget">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-lightbulb" style="color:var(--dash-yellow);margin-right:6px"></i> Daily Recommendations</span>
+        <button class="dash-card-link ai-refresh-btn" onclick="loadDailyRecs()"><i class="fas fa-rotate"></i> Refresh</button>
+      </div>
+      <div id="aiRecsContent">
+        <div class="ai-widget-loading">
+          <div class="ai-spinner"></div>
+          <span>Generating recommendations...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Activity + Quick Actions -->
 <div class="dash-row">
   <div class="dash-col-6">
@@ -416,4 +449,100 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+function loadCRMInsights() {
+  const container = document.getElementById('aiInsightsContent');
+  container.innerHTML = '<div class="ai-widget-loading"><div class="ai-spinner"></div><span>Analyzing your CRM data...</span></div>';
+
+  fetch('{% url "assistant:ai_crm_insights" %}', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      container.innerHTML = '<div style="color:var(--dash-red);padding:16px;font-size:0.8rem">' + data.error + '</div>';
+      return;
+    }
+    const insights = data.insights || [];
+    const recs = data.recommendations || [];
+    const stats = data.stats || {};
+    let html = '<div style="padding:4px 0">';
+
+    if (insights.length) {
+      html += '<div style="font-size:0.65rem;font-weight:600;color:var(--dash-text-ter);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;padding:0 4px"><i class="fas fa-chart-line" style="margin-right:4px"></i>Key Insights</div>';
+      insights.forEach(function(ins) {
+        html += '<div class="ai-insight-item"><div class="ai-insight-title">' + (ins.title || '') + '</div><div class="ai-insight-desc">' + (ins.description || '') + '</div></div>';
+      });
+    }
+
+    if (recs.length) {
+      html += '<div style="font-size:0.65rem;font-weight:600;color:var(--dash-text-ter);text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 8px;padding:0 4px"><i class="fas fa-check-circle" style="margin-right:4px"></i>Recommendations</div>';
+      recs.forEach(function(r) {
+        html += '<div class="ai-recs-item"><div class="ai-recs-action">' + (r.action || '') + '</div><div class="ai-recs-impact">' + (r.impact || '') + '</div></div>';
+      });
+    }
+
+    if (!insights.length && !recs.length) {
+      html += '<div style="text-align:center;color:var(--dash-text-ter);padding:20px;font-size:0.8rem">No insights available yet.</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  })
+  .catch(function() {
+    container.innerHTML = '<div style="color:var(--dash-red);padding:16px;font-size:0.8rem">Failed to load insights.</div>';
+  });
+}
+
+function loadDailyRecs() {
+  const container = document.getElementById('aiRecsContent');
+  container.innerHTML = '<div class="ai-widget-loading"><div class="ai-spinner"></div><span>Generating recommendations...</span></div>';
+
+  fetch('{% url "assistant:ai_daily_recommendations" %}', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      container.innerHTML = '<div style="color:var(--dash-red);padding:16px;font-size:0.8rem">' + data.error + '</div>';
+      return;
+    }
+    const recs = data.recommendations || [];
+    let html = '<div style="padding:4px 0">';
+
+    recs.forEach(function(r) {
+      const icon = r.icon || 'arrow-right';
+      const pri = (r.priority || 'medium').toLowerCase();
+      const colors = { high: 'var(--dash-red)', medium: 'var(--dash-yellow)', low: 'var(--dash-text-ter)' };
+      const color = colors[pri] || 'var(--dash-text-ter)';
+      html += '<div class="ai-recs-card" style="border-left-color:' + color + '">' +
+        '<div class="ai-recs-card-icon" style="color:' + color + '"><i class="fas fa-' + icon + '"></i></div>' +
+        '<div class="ai-recs-card-body"><div class="ai-recs-card-action">' + (r.action || '') + '</div><div class="ai-recs-card-detail">' + (r.detail || '') + '</div></div>' +
+        '<span class="ai-recs-card-prio" style="background:' + color + '">' + pri + '</span>' +
+        '</div>';
+    });
+
+    if (!recs.length) {
+      html += '<div style="text-align:center;color:var(--dash-text-ter);padding:20px;font-size:0.8rem">No recommendations yet.</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  })
+  .catch(function() {
+    container.innerHTML = '<div style="color:var(--dash-red);padding:16px;font-size:0.8rem">Failed to load recommendations.</div>';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(loadCRMInsights, 500);
+  setTimeout(loadDailyRecs, 800);
+});
+</script>
 {% endblock %}

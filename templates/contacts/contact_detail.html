@@ -6,6 +6,7 @@
 {% block extra_head %}
 {{ block.super }}
 <link href="{% static 'contacts/css/contacts.css' %}" rel="stylesheet">
+<link href="{% static 'assistant/css/assistant.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block dashboard_content %}
@@ -85,9 +86,70 @@
       <a href="{% url 'contacts:update' contact.pk %}" class="btn btn-primary rounded-pill px-3 glow-btn btn-sm">
         <i class="fas fa-edit me-1"></i>Edit
       </a>
+      <button class="ai-btn ai-btn-summary" onclick="generateContactSummary({{ contact.pk }})">
+        <i class="fas fa-robot me-1"></i>AI Summary
+      </button>
+      <button class="ai-btn ai-btn-email" onclick="openEmailModal({{ contact.pk }})">
+        <i class="fas fa-envelope me-1"></i>Generate Email
+      </button>
       <a href="{% url 'contacts:delete' contact.pk %}" class="btn rounded-pill px-3 btn-sm" style="background:rgba(255,107,107,0.1);color:var(--dash-red);border:1px solid rgba(255,107,107,0.15)">
         <i class="fas fa-trash me-1"></i>Delete
       </a>
+    </div>
+  </div>
+</div>
+
+<div class="ai-modal-overlay" id="aiSummaryOverlay" onclick="closeAIModal('aiSummaryOverlay')">
+  <div class="ai-modal" onclick="event.stopPropagation()">
+    <div class="ai-modal-head">
+      <span class="ai-modal-title"><i class="fas fa-robot" style="color:var(--dash-brand)"></i> AI Contact Summary</span>
+      <button class="ai-modal-close" onclick="closeAIModal('aiSummaryOverlay')">&times;</button>
+    </div>
+    <div class="ai-modal-body">
+      <div class="ai-loading" id="aiSummaryLoading">
+        <div class="ai-spinner"></div>
+        <span>Generating summary...</span>
+      </div>
+      <div class="ai-result" id="aiSummaryResult" style="display:none"></div>
+      <div class="ai-error" id="aiSummaryError" style="display:none"></div>
+    </div>
+    <div class="ai-modal-foot">
+      <button class="ai-btn-copy" onclick="copyAIContent('aiSummaryResult')"><i class="fas fa-copy"></i> Copy</button>
+      <button class="ai-btn-close" onclick="closeAIModal('aiSummaryOverlay')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="ai-modal-overlay" id="aiEmailOverlay" onclick="closeAIModal('aiEmailOverlay')">
+  <div class="ai-modal ai-modal-lg" onclick="event.stopPropagation()">
+    <div class="ai-modal-head">
+      <span class="ai-modal-title"><i class="fas fa-envelope" style="color:var(--dash-brand)"></i> Generate Email</span>
+      <button class="ai-modal-close" onclick="closeAIModal('aiEmailOverlay')">&times;</button>
+    </div>
+    <div class="ai-modal-body">
+      <div class="ai-email-types" id="aiEmailTypes">
+        <button class="ai-email-type-btn active" data-type="Introduction" onclick="selectEmailType(this)">Introduction</button>
+        <button class="ai-email-type-btn" data-type="Follow-up" onclick="selectEmailType(this)">Follow-up</button>
+        <button class="ai-email-type-btn" data-type="Proposal" onclick="selectEmailType(this)">Proposal</button>
+        <button class="ai-email-type-btn" data-type="Reminder" onclick="selectEmailType(this)">Reminder</button>
+        <button class="ai-email-type-btn" data-type="Thank You" onclick="selectEmailType(this)">Thank You</button>
+      </div>
+      <button class="ai-btn ai-btn-email-generate" onclick="generateEmail({{ contact.pk }})">
+        <i class="fas fa-wand-magic-sparkles"></i> Generate
+      </button>
+      <div class="ai-loading" id="aiEmailLoading" style="display:none">
+        <div class="ai-spinner"></div>
+        <span>Composing email...</span>
+      </div>
+      <div id="aiEmailResult" style="display:none">
+        <div class="ai-email-subject" id="aiEmailSubject"></div>
+        <div class="ai-email-body" id="aiEmailBody"></div>
+      </div>
+      <div class="ai-error" id="aiEmailError" style="display:none"></div>
+    </div>
+    <div class="ai-modal-foot">
+      <button class="ai-btn-copy" onclick="copyAIContent('aiEmailBody')"><i class="fas fa-copy"></i> Copy Body</button>
+      <button class="ai-btn-close" onclick="closeAIModal('aiEmailOverlay')">Close</button>
     </div>
   </div>
 </div>
@@ -97,4 +159,102 @@
 {% block extra_scripts %}
 {{ block.super }}
 <script src="{% static 'contacts/js/contacts.js' %}"></script>
+<script>
+let _selectedEmailType = 'Introduction';
+
+function generateContactSummary(pk) {
+  const overlay = document.getElementById('aiSummaryOverlay');
+  const loading = document.getElementById('aiSummaryLoading');
+  const result = document.getElementById('aiSummaryResult');
+  const error = document.getElementById('aiSummaryError');
+  overlay.style.display = 'flex';
+  loading.style.display = 'flex';
+  result.style.display = 'none';
+  error.style.display = 'none';
+  result.innerHTML = '';
+
+  fetch('{% url "assistant:ai_contact_summary" 0 %}'.replace('/0/', '/' + pk + '/'), {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
+  .then(r => r.json())
+  .then(data => {
+    loading.style.display = 'none';
+    if (data.error) {
+      error.textContent = data.error;
+      error.style.display = 'block';
+    } else {
+      result.textContent = data.summary;
+      result.style.display = 'block';
+    }
+  })
+  .catch(e => {
+    loading.style.display = 'none';
+    error.textContent = 'Network error. Please try again.';
+    error.style.display = 'block';
+  });
+}
+
+function openEmailModal(pk) {
+  document.getElementById('aiEmailOverlay').style.display = 'flex';
+  document.getElementById('aiEmailResult').style.display = 'none';
+  document.getElementById('aiEmailLoading').style.display = 'none';
+  document.getElementById('aiEmailError').style.display = 'none';
+  _selectedEmailType = 'Introduction';
+  document.querySelectorAll('.ai-email-type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === 'Introduction'));
+}
+
+function selectEmailType(btn) {
+  document.querySelectorAll('.ai-email-type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _selectedEmailType = btn.dataset.type;
+}
+
+function generateEmail(pk) {
+  const loading = document.getElementById('aiEmailLoading');
+  const result = document.getElementById('aiEmailResult');
+  const error = document.getElementById('aiEmailError');
+  const subject = document.getElementById('aiEmailSubject');
+  const body = document.getElementById('aiEmailBody');
+  loading.style.display = 'flex';
+  result.style.display = 'none';
+  error.style.display = 'none';
+
+  const form = new FormData();
+  form.append('contact_id', pk);
+  form.append('email_type', _selectedEmailType);
+  form.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+  fetch('{% url "assistant:ai_generate_email" %}', {
+    method: 'POST',
+    body: form,
+  })
+  .then(r => r.json())
+  .then(data => {
+    loading.style.display = 'none';
+    if (data.error) {
+      error.textContent = data.error;
+      error.style.display = 'block';
+    } else {
+      subject.textContent = data.subject || '(No subject)';
+      body.textContent = data.body || '';
+      result.style.display = 'block';
+    }
+  })
+  .catch(e => {
+    loading.style.display = 'none';
+    error.textContent = 'Network error. Please try again.';
+    error.style.display = 'block';
+  });
+}
+
+function closeAIModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+function copyAIContent(id) {
+  const el = document.getElementById(id);
+  navigator.clipboard.writeText(el.textContent).catch(() => {});
+}
+</script>
 {% endblock %}

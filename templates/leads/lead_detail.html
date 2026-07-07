@@ -6,6 +6,7 @@
 {% block extra_head %}
 {{ block.super }}
 <link href="{% static 'leads/css/leads.css' %}" rel="stylesheet">
+<link href="{% static 'assistant/css/assistant.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block dashboard_content %}
@@ -90,9 +91,75 @@
       <a href="{% url 'leads:update' lead.pk %}" class="btn btn-primary rounded-pill px-3 glow-btn btn-sm">
         <i class="fas fa-edit me-1"></i>Edit
       </a>
+      <button class="ai-btn ai-btn-score" onclick="generateLeadScore({{ lead.pk }})">
+        <i class="fas fa-chart-line me-1"></i>AI Score
+      </button>
+      <button class="ai-btn ai-btn-followup" onclick="generateFollowUp({{ lead.pk }})">
+        <i class="fas fa-calendar-check me-1"></i>Follow-up
+      </button>
       <a href="{% url 'leads:delete' lead.pk %}" class="btn rounded-pill px-3 btn-sm" style="background:rgba(255,107,107,0.1);color:var(--dash-red);border:1px solid rgba(255,107,107,0.15)">
         <i class="fas fa-trash me-1"></i>Delete
       </a>
+    </div>
+  </div>
+</div>
+
+<div class="ai-modal-overlay" id="aiScoreOverlay" onclick="closeAIModal('aiScoreOverlay')">
+  <div class="ai-modal" onclick="event.stopPropagation()">
+    <div class="ai-modal-head">
+      <span class="ai-modal-title"><i class="fas fa-chart-line" style="color:var(--dash-brand)"></i> AI Lead Score</span>
+      <button class="ai-modal-close" onclick="closeAIModal('aiScoreOverlay')">&times;</button>
+    </div>
+    <div class="ai-modal-body">
+      <div class="ai-loading" id="aiScoreLoading">
+        <div class="ai-spinner"></div>
+        <span>Analyzing lead...</span>
+      </div>
+      <div id="aiScoreResult" style="display:none">
+        <div class="ai-score-display">
+          <div class="ai-score-ring" id="aiScoreRing">
+            <span class="ai-score-number" id="aiScoreNumber">0</span>
+            <span class="ai-score-label">Score</span>
+          </div>
+          <div class="ai-score-class" id="aiScoreClass">Warm</div>
+        </div>
+        <div class="ai-score-detail">
+          <div class="ai-score-section">
+            <strong>Reasoning</strong>
+            <p id="aiScoreReasoning"></p>
+          </div>
+          <div class="ai-score-section">
+            <strong>Recommended Action</strong>
+            <p id="aiScoreAction"></p>
+          </div>
+        </div>
+      </div>
+      <div class="ai-error" id="aiScoreError" style="display:none"></div>
+    </div>
+    <div class="ai-modal-foot">
+      <button class="ai-btn-close" onclick="closeAIModal('aiScoreOverlay')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="ai-modal-overlay" id="aiFollowupOverlay" onclick="closeAIModal('aiFollowupOverlay')">
+  <div class="ai-modal" onclick="event.stopPropagation()">
+    <div class="ai-modal-head">
+      <span class="ai-modal-title"><i class="fas fa-calendar-check" style="color:var(--dash-brand)"></i> Follow-up Suggestions</span>
+      <button class="ai-modal-close" onclick="closeAIModal('aiFollowupOverlay')">&times;</button>
+    </div>
+    <div class="ai-modal-body">
+      <div class="ai-loading" id="aiFollowupLoading">
+        <div class="ai-spinner"></div>
+        <span>Generating suggestions...</span>
+      </div>
+      <div id="aiFollowupResult" style="display:none">
+        <div class="ai-followup-grid" id="aiFollowupGrid"></div>
+      </div>
+      <div class="ai-error" id="aiFollowupError" style="display:none"></div>
+    </div>
+    <div class="ai-modal-foot">
+      <button class="ai-btn-close" onclick="closeAIModal('aiFollowupOverlay')">Close</button>
     </div>
   </div>
 </div>
@@ -102,4 +169,93 @@
 {% block extra_scripts %}
 {{ block.super }}
 <script src="{% static 'leads/js/leads.js' %}"></script>
+<script>
+function generateLeadScore(pk) {
+  const overlay = document.getElementById('aiScoreOverlay');
+  const loading = document.getElementById('aiScoreLoading');
+  const result = document.getElementById('aiScoreResult');
+  const error = document.getElementById('aiScoreError');
+  overlay.style.display = 'flex';
+  loading.style.display = 'flex';
+  result.style.display = 'none';
+  error.style.display = 'none';
+
+  fetch('{% url "assistant:ai_lead_score" 0 %}'.replace('/0/', '/' + pk + '/'), {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
+  .then(r => r.json())
+  .then(data => {
+    loading.style.display = 'none';
+    if (data.error) {
+      error.textContent = data.error;
+      error.style.display = 'block';
+      return;
+    }
+    document.getElementById('aiScoreNumber').textContent = data.score || '0';
+    document.getElementById('aiScoreClass').textContent = data.classification || 'Cold';
+    document.getElementById('aiScoreReasoning').textContent = data.reasoning || '';
+    document.getElementById('aiScoreAction').textContent = data.recommended_action || '';
+
+    const cls = (data.classification || 'Cold').toLowerCase();
+    const ring = document.getElementById('aiScoreRing');
+    ring.className = 'ai-score-ring ai-score-ring--' + cls;
+    const label = document.getElementById('aiScoreClass');
+    label.className = 'ai-score-class ai-score-class--' + cls;
+
+    result.style.display = 'block';
+  })
+  .catch(e => {
+    loading.style.display = 'none';
+    error.textContent = 'Network error. Please try again.';
+    error.style.display = 'block';
+  });
+}
+
+function generateFollowUp(pk) {
+  const overlay = document.getElementById('aiFollowupOverlay');
+  const loading = document.getElementById('aiFollowupLoading');
+  const result = document.getElementById('aiFollowupResult');
+  const grid = document.getElementById('aiFollowupGrid');
+  const error = document.getElementById('aiFollowupError');
+  overlay.style.display = 'flex';
+  loading.style.display = 'flex';
+  result.style.display = 'none';
+  error.style.display = 'none';
+  grid.innerHTML = '';
+
+  fetch('{% url "assistant:ai_lead_followup" 0 %}'.replace('/0/', '/' + pk + '/'), {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
+  .then(r => r.json())
+  .then(data => {
+    loading.style.display = 'none';
+    if (data.error) {
+      error.textContent = data.error;
+      error.style.display = 'block';
+      return;
+    }
+    const suggestions = data.suggestions || [];
+    suggestions.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'ai-followup-card';
+      card.innerHTML = '<div class="ai-followup-action">' + (s.action || '') + '</div>' +
+        '<div class="ai-followup-meta"><span class="ai-followup-timing"><i class="fas fa-clock"></i> ' + (s.timing || '') + '</span></div>' +
+        '<div class="ai-followup-reason">' + (s.reason || '') + '</div>';
+      grid.appendChild(card);
+    });
+    result.style.display = 'block';
+  })
+  .catch(e => {
+    loading.style.display = 'none';
+    error.textContent = 'Network error. Please try again.';
+    error.style.display = 'block';
+  });
+}
+
+function closeAIModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+</script>
 {% endblock %}
