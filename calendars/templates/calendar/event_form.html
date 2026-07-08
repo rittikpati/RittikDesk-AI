@@ -1,0 +1,97 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'calendar/css/calendar.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="calendar-header">
+  <h2>{{ title }}</h2>
+  <a href="{% url 'calendars:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Calendar</a>
+</div>
+
+<div class="dash-card" style="max-width:640px">
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="dash-alert dash-alert-error">
+      {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Title <span style="color:var(--dash-red)">*</span></label>
+        {{ form.title }}
+        {% if form.title.errors %}<div class="invalid-feedback d-block">{{ form.title.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Start Date <span style="color:var(--dash-red)">*</span></label>
+        {{ form.start_date }}
+        {% if form.start_date.errors %}<div class="invalid-feedback d-block">{{ form.start_date.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Start Time</label>
+        {{ form.start_time }}
+        {% if form.start_time.errors %}<div class="invalid-feedback d-block">{{ form.start_time.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small" style="color:var(--dash-text-sec)">End Time</label>
+        {{ form.end_time }}
+        {% if form.end_time.errors %}<div class="invalid-feedback d-block">{{ form.end_time.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Event Type</label>
+        {{ form.event_type }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Status</label>
+        {{ form.status }}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Location</label>
+        {{ form.location }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Meeting Link</label>
+        {{ form.meeting_link }}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Description</label>
+        {{ form.description }}
+        {% if form.description.errors %}<div class="invalid-feedback d-block">{{ form.description.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Contact</label>
+        {{ form.contact }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Lead</label>
+        {{ form.lead }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Task</label>
+        {{ form.task }}
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-card-border)">
+      <button type="submit" class="btn btn-primary rounded-pill px-4 glow-btn">
+        <i class="fas fa-check me-1"></i>{% if is_update %}Update{% else %}Create{% endif %} Event
+      </button>
+      <a href="{% url 'calendars:list' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

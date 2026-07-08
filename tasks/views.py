@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
+from core.mixins import OwnerFilterMixin
 from .models import Task
 from .forms import TaskForm
 
@@ -21,11 +22,6 @@ SORT_MAP = {
 STATUS_CHOICES = ['pending', 'in_progress', 'completed']
 PRIORITY_CHOICES = ['low', 'medium', 'high']
 DATE_FILTERS = ['overdue', 'today', 'this_week', 'this_month']
-
-
-class OwnerFilterMixin(LoginRequiredMixin):
-    def get_queryset(self):
-        return Task.objects.filter(owner=self.request.user).select_related('owner')
 
 
 def apply_filters(qs, search, status, priority, due_date, sort):

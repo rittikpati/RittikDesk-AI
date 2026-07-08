@@ -13,124 +13,110 @@
 {% block dashboard_content %}
 
 <div class="chat-layout">
-  <aside class="chat-sidebar" id="chatSidebar">
+  <aside class="chat-sidebar" id="chatSidebar" role="navigation" aria-label="Conversations">
     <div class="chat-sidebar-header">
-      <button class="chat-new-btn" id="chatNewBtn" onclick="window.location.href='{% url 'assistant:new' %}'">
-        <i class="fas fa-plus"></i>
-        <span>New Chat</span>
-      </button>
+      <div class="chat-sidebar-top-row">
+        <button class="chat-new-btn" id="chatNewBtn" aria-label="Start new chat">
+          <i class="fas fa-plus"></i>
+          <span>New Chat</span>
+        </button>
+        <button class="chat-sidebar-close" id="chatSidebarClose" aria-label="Close sidebar">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
     </div>
 
     <div class="chat-sidebar-search">
       <i class="fas fa-search chat-search-icon"></i>
-      <input type="text" class="chat-search-input" id="chatSidebarSearch" placeholder="Search conversations..." autocomplete="off">
+      <input type="text" class="chat-search-input" id="chatSidebarSearch" placeholder="Search conversations..." autocomplete="off" aria-label="Search conversations">
     </div>
 
-    <div class="chat-sidebar-body" id="chatSidebarBody">
+    <div class="chat-sidebar-body" id="chatSidebarBody" role="listbox" aria-label="Chat history">
       {% if pinned_conversations %}
-      <div class="chat-pinned-section">
+      <div class="chat-pinned-section" data-section="pinned">
         <div class="chat-pinned-header">
           <i class="fas fa-thumbtack"></i>
           <span>Pinned</span>
         </div>
-        <div class="chat-category-items">
+        <div class="chat-conv-list">
           {% for conv in pinned_conversations %}
-          <div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}" draggable="true">
-            <div class="chat-conv-link" onclick="window.location.href='{% url 'assistant:chat' conv.pk %}'">
-              <i class="fas fa-comment"></i>
-              <span class="chat-conv-title">{{ conv.title|truncatechars:30 }}</span>
-            </div>
-            <div class="chat-conv-actions">
-              <button class="chat-conv-btn chat-pin-btn pinned" title="Unpin">
-                <i class="fas fa-thumbtack"></i>
-              </button>
-              <button class="chat-conv-btn chat-rename-btn" title="Rename" data-id="{{ conv.pk }}">
-                <i class="fas fa-pencil"></i>
-              </button>
-              <button class="chat-conv-btn chat-delete-btn" title="Delete" data-id="{{ conv.pk }}">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          </div>
+          {% include 'assistant/components/conv_item.html' with conv=conv pinned=True %}
           {% endfor %}
         </div>
       </div>
-      <div class="chat-section-divider"></div>
       {% endif %}
 
-      {% for cat, convs in category_data %}
-      <div class="chat-category" data-category-id="{{ cat.pk }}">
-        <div class="chat-category-header">
-          <button class="chat-category-toggle"><i class="fas fa-chevron-down"></i></button>
-          <span class="chat-category-name">{{ cat.name }}</span>
-          <div class="chat-category-actions">
-            <button class="chat-category-btn chat-category-rename-btn" title="Rename"><i class="fas fa-pencil"></i></button>
-            <button class="chat-category-btn chat-category-delete-btn danger" title="Delete"><i class="fas fa-trash"></i></button>
-          </div>
-        </div>
-        <div class="chat-category-items">
+      {% for label, convs in time_groups %}
+      <div class="chat-time-group" data-section="{{ label|slugify }}">
+        <div class="chat-time-header">{{ label }}</div>
+        <div class="chat-conv-list">
           {% for conv in convs %}
-          <div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}" draggable="true">
-            <div class="chat-conv-link" onclick="window.location.href='{% url 'assistant:chat' conv.pk %}'">
-              <i class="fas fa-comment"></i>
-              <span class="chat-conv-title">{{ conv.title|truncatechars:30 }}</span>
-            </div>
-            <div class="chat-conv-actions">
-              <button class="chat-conv-btn chat-pin-btn" title="Pin"><i class="fas fa-thumbtack"></i></button>
-              <button class="chat-conv-btn chat-rename-btn" title="Rename" data-id="{{ conv.pk }}"><i class="fas fa-pencil"></i></button>
-              <button class="chat-conv-btn chat-delete-btn" title="Delete" data-id="{{ conv.pk }}"><i class="fas fa-trash"></i></button>
-            </div>
-          </div>
-          {% empty %}
-          <div class="chat-sidebar-empty"><p>Drop conversations here</p></div>
+          {% include 'assistant/components/conv_item.html' with conv=conv pinned=False %}
           {% endfor %}
         </div>
       </div>
+      {% empty %}
+      {% if not pinned_conversations %}
+      <div class="chat-empty-state" id="chatEmptyState">
+        <div class="chat-empty-icon">🤖</div>
+        <div class="chat-empty-text">Start your first conversation.</div>
+      </div>
+      {% endif %}
       {% endfor %}
 
-      {% if uncategorized_conversations %}
-      <div class="chat-category" data-category-id="">
-        <div class="chat-category-header">
-          <button class="chat-category-toggle"><i class="fas fa-chevron-down"></i></button>
-          <span class="chat-category-name">General</span>
-        </div>
-        <div class="chat-category-items">
-          {% for conv in uncategorized_conversations %}
-          <div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}" draggable="true">
-            <div class="chat-conv-link" onclick="window.location.href='{% url 'assistant:chat' conv.pk %}'">
-              <i class="fas fa-comment"></i>
-              <span class="chat-conv-title">{{ conv.title|truncatechars:30 }}</span>
-            </div>
-            <div class="chat-conv-actions">
-              <button class="chat-conv-btn chat-pin-btn" title="Pin"><i class="fas fa-thumbtack"></i></button>
-              <button class="chat-conv-btn chat-rename-btn" title="Rename" data-id="{{ conv.pk }}"><i class="fas fa-pencil"></i></button>
-              <button class="chat-conv-btn chat-delete-btn" title="Delete" data-id="{{ conv.pk }}"><i class="fas fa-trash"></i></button>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
+      <div class="chat-search-empty" id="chatSearchEmpty" style="display:none">
+        <i class="fas fa-search"></i>
+        <span>No conversations found.</span>
       </div>
-      {% endif %}
-
-      {% if not pinned_conversations and not uncategorized_conversations and not category_data %}
-      <div class="chat-sidebar-empty"><p>No conversations yet.</p></div>
-      {% endif %}
     </div>
 
     <div class="chat-sidebar-footer">
-      <button class="chat-add-category-btn" id="addCategoryBtn">
+      <button class="chat-new-btn" id="chatNewBtnFooter" aria-label="Start new chat">
         <i class="fas fa-plus"></i>
-        <span>Add Category</span>
+        <span>New Chat</span>
       </button>
     </div>
   </aside>
 
+  <button class="chat-mobile-toggle" id="chatMobileToggle" aria-label="Toggle sidebar">
+    <i class="fas fa-bars"></i>
+  </button>
+
   <div class="chat-main" id="chatMain">
     {% if active_conversation %}
-    <div class="chat-messages" id="chatMessages">
+    <div class="chat-header-bar">
+      <div class="chat-header-title">{{ active_conversation.title }}</div>
+      <div class="chat-menu-dropdown">
+        <button class="chat-menu-btn" id="chatMenuBtn" aria-haspopup="true" aria-expanded="false" aria-label="Chat menu" title="Chat menu">
+          <i class="fas fa-ellipsis-v"></i>
+        </button>
+        <div class="chat-menu" id="chatMenu" role="menu">
+          <a href="{% url 'assistant:export' active_conversation.pk %}?format=md" class="chat-menu-item" role="menuitem" download>
+            <i class="fas fa-file-lines"></i> Export as Markdown (.md)
+          </a>
+          <a href="{% url 'assistant:export' active_conversation.pk %}?format=txt" class="chat-menu-item" role="menuitem" download>
+            <i class="fas fa-file-alt"></i> Export as Plain Text (.txt)
+          </a>
+          <span class="chat-menu-item disabled" aria-disabled="true" title="Coming soon">
+            <i class="fas fa-file-pdf"></i> Export as PDF (.pdf)
+            <span class="chat-menu-soon">Coming soon</span>
+          </span>
+          <div class="chat-menu-divider"></div>
+          <button class="chat-menu-item" id="chatMenuRename" role="menuitem">
+            <i class="fas fa-pencil"></i> Rename Chat
+          </button>
+          <div class="chat-menu-divider"></div>
+          <button class="chat-menu-item chat-menu-delete" role="menuitem" data-delete-url="{% url 'assistant:delete' active_conversation.pk %}">
+            <i class="fas fa-trash-alt"></i> Delete Chat
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages" role="log" aria-label="Chat messages" aria-live="polite">
       {% for msg in messages %}
       <div class="chat-msg {% if msg.role == 'user' %}chat-msg-user{% else %}chat-msg-assistant{% endif %}" data-role="{{ msg.role }}"{% if msg.role == 'user' %} data-pk="{{ msg.pk }}"{% endif %}>
-        <div class="chat-msg-avatar">
+        <div class="chat-msg-avatar" aria-hidden="true">
           {% if msg.role == 'user' %}
           <i class="fas fa-user"></i>
           {% else %}
@@ -141,22 +127,18 @@
           <div class="chat-msg-text">{% if msg.role == 'assistant' %}{{ msg.content|linebreaks }}{% else %}{{ msg.content }}{% endif %}</div>
           <div class="chat-msg-time">{{ msg.created_at|date:'g:i A' }}</div>
           {% if msg.role == 'user' %}
-          <button class="chat-msg-action-btn chat-edit-btn" onclick="var el=this.closest('.chat-msg');if(window.editMessage)editMessage(el);">
+          <button class="chat-msg-action-btn chat-edit-btn" onclick="var el=this.closest('.chat-msg');if(window.editMessage)editMessage(el);" aria-label="Edit message">
             <i class="fas fa-pencil"></i> Edit
           </button>
           {% else %}
-          <div class="chat-msg-actions visible">
-            <button class="chat-msg-action-btn chat-copy-response-btn" onclick="window.copyResponse(this)" title="Copy response"><i class="fas fa-copy"></i> Copy</button>
-            <button class="chat-msg-action-btn chat-regenerate-btn" onclick="window.regenerate(this)" title="Regenerate"><i class="fas fa-rotate"></i> Regenerate</button>
+          <div class="chat-msg-actions">
+            <button class="chat-msg-action-btn chat-copy-response-btn" onclick="window.copyResponse(this)" title="Copy response" aria-label="Copy response"><i class="fas fa-copy"></i> Copy</button>
+            <button class="chat-msg-action-btn chat-regenerate-btn" onclick="window.regenerate(this)" title="Regenerate" aria-label="Regenerate response"><i class="fas fa-rotate"></i> Regenerate</button>
           </div>
           {% endif %}
         </div>
       </div>
       {% endfor %}
-      <div class="chat-typing" id="chatTyping" style="display:none">
-        <div class="chat-msg-avatar"><i class="fas fa-robot"></i></div>
-        <div class="chat-typing-dots"><span></span><span></span><span></span></div>
-      </div>
     </div>
 
     <div class="chat-input-area">
@@ -164,39 +146,39 @@
         {% csrf_token %}
         <div class="chat-input-wrap">
           {{ form.message }}
-          <button type="submit" class="chat-send-btn" id="chatSendBtn"><i class="fas fa-arrow-up"></i></button>
-          <button type="button" class="chat-stop-btn" id="chatStopBtn" title="Stop generating"><i class="fas fa-square"></i></button>
+          <button type="submit" class="chat-send-btn" id="chatSendBtn" aria-label="Send message"><i class="fas fa-arrow-up"></i></button>
+          <button type="button" class="chat-stop-btn" id="chatStopBtn" title="Stop generating" aria-label="Stop generating"><i class="fas fa-square"></i></button>
         </div>
       </form>
       <div class="chat-footer-text">AI responses are generated by OpenRouter. Verify important information.</div>
     </div>
     {% else %}
     <div class="chat-welcome">
-      <div class="chat-welcome-icon"><i class="fas fa-robot"></i></div>
+      <div class="chat-welcome-icon" aria-hidden="true"><i class="fas fa-robot"></i></div>
       <h2>How can I help you today?</h2>
       <p class="chat-welcome-sub">Ask me anything about your CRM, contacts, leads, or campaigns. I'm here to assist with insights, automation, and more.</p>
       <div class="chat-suggestions">
-        <div class="chat-suggestion-card" data-prompt="Explain this code">
+        <div class="chat-suggestion-card" data-prompt="Explain this code" tabindex="0" role="button" aria-label="Suggestion: Explain this code">
           <i class="fas fa-code"></i>
           <span>Explain this code</span>
         </div>
-        <div class="chat-suggestion-card" data-prompt="Fix my Django bug">
+        <div class="chat-suggestion-card" data-prompt="Fix my Django bug" tabindex="0" role="button" aria-label="Suggestion: Fix my Django bug">
           <i class="fas fa-bug"></i>
           <span>Fix my Django bug</span>
         </div>
-        <div class="chat-suggestion-card" data-prompt="Write a professional email">
+        <div class="chat-suggestion-card" data-prompt="Write a professional email" tabindex="0" role="button" aria-label="Suggestion: Write a professional email">
           <i class="fas fa-envelope"></i>
           <span>Write a professional email</span>
         </div>
-        <div class="chat-suggestion-card" data-prompt="Generate SQL query">
+        <div class="chat-suggestion-card" data-prompt="Generate SQL query" tabindex="0" role="button" aria-label="Suggestion: Generate SQL query">
           <i class="fas fa-database"></i>
           <span>Generate SQL query</span>
         </div>
-        <div class="chat-suggestion-card" data-prompt="Summarize a document">
+        <div class="chat-suggestion-card" data-prompt="Summarize a document" tabindex="0" role="button" aria-label="Suggestion: Summarize a document">
           <i class="fas fa-file-alt"></i>
           <span>Summarize a document</span>
         </div>
-        <div class="chat-suggestion-card" data-prompt="Brainstorm startup ideas">
+        <div class="chat-suggestion-card" data-prompt="Brainstorm startup ideas" tabindex="0" role="button" aria-label="Suggestion: Brainstorm startup ideas">
           <i class="fas fa-lightbulb"></i>
           <span>Brainstorm startup ideas</span>
         </div>
@@ -206,6 +188,9 @@
   </div>
 </div>
 
+<div id="chatA11yAnnounce" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+{% include 'assistant/components/confirm_dialog.html' %}
 {% endblock %}
 
 {% block extra_scripts %}

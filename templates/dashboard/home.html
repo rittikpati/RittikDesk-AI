@@ -5,6 +5,7 @@
 {{ block.super }}
 <link href="{% static 'campaigns/css/campaigns.css' %}" rel="stylesheet">
 <link href="{% static 'assistant/css/assistant.css' %}" rel="stylesheet">
+<link href="{% static 'calendar/css/calendar.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block dashboard_content %}
@@ -420,6 +421,10 @@
           <span class="dash-action-icon" style="background:rgba(0,180,216,0.1);color:#00B4D8"><i class="fas fa-check-circle"></i></span>
           <span>New Task</span>
         </a>
+        <a href="{% url 'calendars:create' %}" class="dash-action">
+          <span class="dash-action-icon" style="background:rgba(108,99,255,0.1);color:#8B85FF"><i class="fas fa-calendar-plus"></i></span>
+          <span>New Event</span>
+        </a>
         <a href="{% url 'assistant:list' %}" class="dash-action">
           <span class="dash-action-icon" style="background:rgba(255,184,0,0.1);color:#FFB800"><i class="fas fa-robot"></i></span>
           <span>AI Assistant</span>
@@ -542,6 +547,48 @@
             {% empty %}
             <tr>
               <td colspan="5" style="text-align:center;color:var(--dash-text-ter);padding:20px">No tasks yet. <a href="{% url 'tasks:create' %}" style="color:var(--dash-brand)">Create your first task</a>.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upcoming Events -->
+<div class="dash-row">
+  <div class="dash-col-12">
+    <div class="dash-card dash-loaded">
+      <div class="dash-card-head">
+        <span class="dash-card-title">Upcoming Events</span>
+        <a href="{% url 'calendars:list' %}?view=upcoming" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in upcoming_events %}
+            <tr>
+              <td><div class="dash-td-name" style="gap:0"><span style="font-weight:600">{{ e.title }}</span></div></td>
+              <td style="font-size:0.75rem;color:var(--dash-text-sec)">{{ e.start_date|date:'M d, Y' }}</td>
+              <td style="font-size:0.75rem;color:var(--dash-text-sec)">{% if e.start_time %}{{ e.start_time|time:'g:i A' }}{% else %}—{% endif %}</td>
+              <td><span class="event-type-badge event-type-badge--{{ e.event_type }}">{{ e.get_event_type_display }}</span></td>
+              <td><span class="event-status event-status--{{ e.status }}">{{ e.get_status_display }}</span></td>
+              <td><a href="{% url 'calendars:detail' e.pk %}" class="dash-td-btn"><i class="fas fa-eye"></i></a></td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" style="text-align:center;color:var(--dash-text-ter);padding:20px">No upcoming events. <a href="{% url 'calendars:create' %}" style="color:var(--dash-brand)">Create your first event</a>.</td>
             </tr>
             {% endfor %}
           </tbody>

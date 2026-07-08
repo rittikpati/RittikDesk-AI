@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 import time
 
 import requests
@@ -18,205 +19,289 @@ from .prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
+MAX_CONTEXT_TOKENS = 8000
+TOKEN_ESTIMATE_FACTOR = 4  # rough: 1 token ≈ 4 chars
+SYSTEM_PROMPT_TOKENS = len(SYSTEM_PROMPT) // TOKEN_ESTIMATE_FACTOR + 200
+
+
+USER_FRIENDLY_ERRORS = {
+    AuthenticationError: (
+        "There's an authentication issue with the AI service. "
+        "Please contact your administrator to check the API configuration."
+    ),
+    RateLimitError: (
+        "The AI service is temporarily busy due to high demand. "
+        "Please wait a moment and try again."
+    ),
+    TimeoutError: (
+        "The AI service took too long to respond. "
+        "Please try again — sometimes a retry is all it needs."
+    ),
+    ModelNotFoundError: (
+        "The requested AI model is not available right now. "
+        "A fallback model will be used automatically."
+    ),
+    ServerError: (
+        "The AI service is temporarily unavailable. "
+        "Please try again in a few moments."
+    ),
+    NetworkError: (
+        "Could not reach the AI service. "
+        "Please check your internet connection and try again."
+    ),
+}
+
+DEFAULT_ERROR = (
+    "I'm having trouble connecting to the AI service right now. "
+    "Please try again in a moment."
+)
+
+API_KEY_MISSING_ERROR = (
+    "The AI assistant needs an API key to work. "
+    "Please ask your administrator to add the OpenRouter API key to the .env file."
+)
+
+
+def _user_message(exc):
+    for exc_type, msg in USER_FRIENDLY_ERRORS.items():
+        if isinstance(exc, exc_type):
+            return msg
+    return DEFAULT_ERROR
+
+
+def _is_placeholder_key(api_key):
+    if not api_key:
+        return True
+    lowered = api_key.lower()
+    return any(word in lowered for word in ['your-openrouter', 'placeholder', 'sk-or-v1-'])
+
+
+def _truncate_context(messages, max_chars=MAX_CONTEXT_TOKENS * TOKEN_ESTIMATE_FACTOR):
+    """Trim oldest messages to stay within a rough token budget.
+
+    Always keeps the system prompt and the most recent messages.
+    """
+    total = SYSTEM_PROMPT_TOKENS * TOKEN_ESTIMATE_FACTOR
+    for m in messages:
+        total += len(m.get('content', '')) + 50
+    if total <= max_chars:
+        return messages
+
+    budget = max_chars - (SYSTEM_PROMPT_TOKENS * TOKEN_ESTIMATE_FACTOR)
+    trimmed = []
+    for m in reversed(messages):
+        cost = len(m.get('content', '')) + 50
+        if budget - cost >= 0:
+            trimmed.insert(0, m)
+            budget -= cost
+    return trimmed
+
+
+_session = None
+
+
+def _get_session():
+    global _session
+    if _session is None:
+        _session = requests.Session()
+    return _session
+
+
+def _build_headers(api_key):
+    return {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:8000',
+        'X-Title': 'RittikDesk',
+    }
+
+
+def _build_payload(model, messages, stream=False):
+    return {
+        'model': model,
+        'messages': messages,
+        'temperature': settings.AI_TEMPERATURE,
+        'max_tokens': settings.AI_MAX_TOKENS,
+        'stream': stream,
+    }
+
+
+def _models():
+    """Primary + fallback models (deduplicated)."""
+    primary = settings.OPENROUTER_MODEL
+    result = [primary]
+    raw = getattr(settings, 'OPENROUTER_FALLBACK_MODELS', [])
+    if isinstance(raw, str):
+        raw = [m.strip() for m in raw.split(',') if m.strip()]
+    for m in raw:
+        if m and m not in result:
+            result.append(m)
+    return result
+
+
+def _handle_error_response(response, model):
+    """Centralized error handler — raises typed exceptions."""
+    try:
+        body = response.json()
+        error_msg = body.get('error', {}).get('message', response.text[:150])
+    except Exception:
+        error_msg = response.text[:150]
+
+    logger.error("OpenRouter Error | Model: %s | Status: %s | Message: %s",
+                 model, response.status_code, error_msg)
+
+    if response.status_code == 401:
+        raise AuthenticationError(error_msg)
+    if response.status_code == 404:
+        raise ModelNotFoundError(error_msg)
+    if response.status_code == 429:
+        raise RateLimitError(error_msg)
+    if response.status_code >= 500:
+        raise ServerError(error_msg)
+
+    raise AIAssistantError(f"HTTP {response.status_code}: {error_msg}")
+
+
+def _call_model(api_key, model, formatted_messages):
+    """Non-streaming call to a single model."""
+    session = _get_session()
+    response = session.post(
+        f'{settings.OPENROUTER_BASE_URL}/chat/completions',
+        headers=_build_headers(api_key),
+        json=_build_payload(model, formatted_messages),
+        timeout=settings.AI_TIMEOUT,
+    )
+    if response.status_code != 200:
+        _handle_error_response(response, model)
+    return response.json()['choices'][0]['message']['content']
+
+
+def _call_model_stream(api_key, model, formatted_messages):
+    """Streaming call to a single model. Yields content tokens."""
+    session = _get_session()
+    response = session.post(
+        f'{settings.OPENROUTER_BASE_URL}/chat/completions',
+        headers=_build_headers(api_key),
+        json=_build_payload(model, formatted_messages, stream=True),
+        stream=True,
+        timeout=settings.AI_TIMEOUT,
+    )
+    if response.status_code != 200:
+        _handle_error_response(response, model)
+
+    for line in response.iter_lines():
+        if not line:
+            continue
+        line = line.decode('utf-8')
+        if line.startswith('data: '):
+            data = line[6:].strip()
+            if data == '[DONE]':
+                break
+            try:
+                chunk = json.loads(data)
+                content = chunk.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                if content:
+                    yield content
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+
 
 class AIService:
-    _session = None
+    """High-level AI service with fallback, retry, and context trimming."""
 
     def __init__(self):
         self.api_key = settings.OPENROUTER_API_KEY.strip() if settings.OPENROUTER_API_KEY else ''
-        self.base_url = settings.OPENROUTER_BASE_URL
-        self.timeout = settings.AI_TIMEOUT
-        self.temperature = settings.AI_TEMPERATURE
-        self.max_tokens = settings.AI_MAX_TOKENS
+        if _is_placeholder_key(self.api_key):
+            logger.error("OPENROUTER_API_KEY is missing or a placeholder in .env")
 
-        if not self.api_key or "your-openrouter" in self.api_key.lower():
-            logger.error("❌ OPENROUTER_API_KEY is missing or placeholder in .env!")
-
-    @classmethod
-    def _get_session(cls):
-        if cls._session is None:
-            cls._session = requests.Session()
-        return cls._session
-
-    def _models(self):
-        """Primary + Fallback models (no duplicates)"""
-        primary = settings.OPENROUTER_MODEL
-        models = [primary]
-        raw = getattr(settings, 'OPENROUTER_FALLBACK_MODELS', [])
-        if isinstance(raw, str):
-            raw = [m.strip() for m in raw.split(',') if m.strip()]
-        for m in raw:
-            if m and m not in models:
-                models.append(m)
-        return models
+    def _format_messages(self, messages):
+        """Convert DB message objects to API format with context trimming."""
+        formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+        for msg in messages:
+            formatted.append({'role': msg.role, 'content': msg.content})
+        return _truncate_context(formatted)
 
     def generate_response(self, messages):
-        """Non-streaming version (backup)"""
+        """Non-streaming response with automatic fallback."""
         if not self.api_key:
-            return "AI service is not configured. Please contact admin."
+            return API_KEY_MISSING_ERROR
 
-        formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-        for msg in messages:
-            formatted.append({'role': msg.role, 'content': msg.content})
+        formatted = self._format_messages(messages)
 
-        for idx, model in enumerate(self._models()):
+        for idx, model in enumerate(_models()):
             if idx > 0:
-                logger.info(f"🔄 Switching to fallback model: {model}")
-                time.sleep(1.5)
+                delay = 1.0 + random.random()
+                logger.info("Falling back to model: %s (delay=%.1fs)", model, delay)
+                time.sleep(delay)
 
             try:
-                return self._call_model(model, formatted)
-            except (RateLimitError, ServerError, AIAssistantError) as e:
-                logger.warning(f"Model {model} failed: {type(e).__name__}")
-                if idx == len(self._models()) - 1:
-                    return "Sorry, all AI models are currently busy. Please try again later."
+                return _call_model(self.api_key, model, formatted)
+            except (RateLimitError, ServerError) as e:
+                logger.warning("Model %s failed: %s", model, e)
+                if idx == len(_models()) - 1:
+                    return _user_message(e)
             except requests.exceptions.Timeout:
-                logger.warning(f"Model {model} timed out")
-                if idx == len(self._models()) - 1:
-                    return "The AI service timed out. Please try again."
+                logger.warning("Model %s timed out", model)
+                if idx == len(_models()) - 1:
+                    return _user_message(TimeoutError("timeout"))
             except requests.exceptions.ConnectionError:
-                logger.warning(f"Model {model} connection error")
-                if idx == len(self._models()) - 1:
-                    return "Could not connect to the AI service. Please check your network."
+                logger.warning("Model %s connection error", model)
+                if idx == len(_models()) - 1:
+                    return _user_message(NetworkError("connection"))
             except requests.exceptions.RequestException as e:
-                logger.warning(f"Model {model} request failed: {e}")
-                if idx == len(self._models()) - 1:
-                    return "An error occurred while contacting the AI service. Please try again."
-        return "An unexpected error occurred."
+                logger.warning("Model %s request failed: %s", model, e)
+                if idx == len(_models()) - 1:
+                    return DEFAULT_ERROR
+        return DEFAULT_ERROR
 
     def generate_stream(self, messages):
-        """Streaming version with fallback support"""
+        """Streaming response with automatic fallback. Yields tokens."""
         if not self.api_key:
-            yield "AI service is not configured properly. Please add your OpenRouter API key in .env file."
+            yield API_KEY_MISSING_ERROR
             return
 
-        formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-        for msg in messages:
-            formatted.append({'role': msg.role, 'content': msg.content})
-
-        models = self._models()
-        logger.info(f"🤖 Streaming request started with {len(models)} models. Primary: {models[0]}")
+        formatted = self._format_messages(messages)
+        models = _models()
+        logger.info("Streaming with %d models. Primary: %s", len(models), models[0])
 
         for idx, model in enumerate(models):
             if idx > 0:
-                logger.info(f"🔄 Switching to fallback model: {model}")
-                time.sleep(2.0)   # Give some time before trying next model
+                delay = 1.5 + random.random()
+                logger.info("Fallback stream model: %s (delay=%.1fs)", model, delay)
+                time.sleep(delay)
 
             try:
-                yield from self._call_model_stream(model, formatted)
-                logger.info(f"✅ Streaming successful with model: {model}")
+                yield from _call_model_stream(self.api_key, model, formatted)
+                logger.info("Streaming successful with model: %s", model)
                 return
             except (RateLimitError, ServerError) as e:
-                logger.warning(f"⚠️ Model {model} failed (streaming): {e}")
+                logger.warning("Stream model %s failed: %s", model, e)
+                if idx == len(models) - 1:
+                    yield _user_message(e)
+                    return
             except (AuthenticationError, ModelNotFoundError) as e:
-                logger.error(f"❌ Critical error with {model}: {e}")
-                yield "Authentication or model error occurred. Please check API key."
+                logger.error("Critical error with %s: %s", model, e)
+                yield _user_message(e)
                 return
             except AIAssistantError as e:
-                logger.warning(f"Model {model} rejected: {e}")
+                logger.warning("Model %s rejected: %s", model, e)
                 if idx == len(models) - 1:
-                    yield "Sorry, I am unable to respond right now. All models are busy."
+                    yield _user_message(e)
                     return
             except requests.exceptions.Timeout:
-                logger.warning(f"Model {model} timed out (streaming)")
+                logger.warning("Model %s stream timed out", model)
                 if idx == len(models) - 1:
-                    yield "The AI service timed out. Please try again."
+                    yield _user_message(TimeoutError("timeout"))
                     return
             except requests.exceptions.ConnectionError:
-                logger.warning(f"Model {model} connection error (streaming)")
+                logger.warning("Model %s connection error", model)
                 if idx == len(models) - 1:
-                    yield "Could not connect to the AI service. Please check your network."
+                    yield _user_message(NetworkError("connection"))
                     return
             except requests.exceptions.RequestException as e:
-                logger.warning(f"Model {model} request failed (streaming): {e}")
+                logger.warning("Model %s stream failed: %s", model, e)
                 if idx == len(models) - 1:
-                    yield "An error occurred while contacting the AI service. Please try again."
+                    yield DEFAULT_ERROR
                     return
 
-        yield "Sorry, all AI models are currently unavailable. Please try again in a few minutes."
-
-    def _call_model(self, model, formatted_messages):
-        """Normal (non-stream) call"""
-        url = f'{self.base_url}/chat/completions'
-        headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'http://localhost:8000',
-            'X-Title': 'RittikDesk',
-        }
-
-        payload = {
-            'model': model,
-            'messages': formatted_messages,
-            'temperature': self.temperature,
-            'max_tokens': self.max_tokens,
-        }
-
-        response = self._get_session().post(url, headers=headers, json=payload, timeout=self.timeout)
-
-        if response.status_code != 200:
-            self._handle_error(response, model)
-
-        return response.json()['choices'][0]['message']['content']
-
-    def _call_model_stream(self, model, formatted_messages):
-        """Streaming call"""
-        url = f'{self.base_url}/chat/completions'
-        headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'http://localhost:8000',
-            'X-Title': 'RittikDesk',
-        }
-
-        payload = {
-            'model': model,
-            'messages': formatted_messages,
-            'temperature': self.temperature,
-            'max_tokens': self.max_tokens,
-            'stream': True,
-        }
-
-        response = self._get_session().post(
-            url, headers=headers, json=payload, stream=True, timeout=self.timeout
-        )
-
-        if response.status_code != 200:
-            self._handle_error(response, model)
-
-        for line in response.iter_lines():
-            if not line:
-                continue
-            line = line.decode('utf-8')
-            if line.startswith('data: '):
-                data = line[6:].strip()
-                if data == '[DONE]':
-                    break
-                try:
-                    chunk = json.loads(data)
-                    content = chunk.get('choices', [{}])[0].get('delta', {}).get('content', '')
-                    if content:
-                        yield content
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    continue
-
-    def _handle_error(self, response, model):
-        """Centralized error handler"""
-        try:
-            body = response.json()
-            error_msg = body.get('error', {}).get('message', response.text[:150])
-        except Exception:
-            error_msg = response.text[:150]
-
-        logger.error(f"OpenRouter Error | Model: {model} | Status: {response.status_code} | Message: {error_msg}")
-
-        if response.status_code == 401:
-            raise AuthenticationError(f"Invalid API Key: {error_msg}")
-        if response.status_code == 404:
-            raise ModelNotFoundError(f"Model not found: {error_msg}")
-        if response.status_code == 429:
-            raise RateLimitError(f"Rate limit exceeded: {error_msg}")
-        if response.status_code >= 500:
-            raise ServerError(f"Server error: {error_msg}")
-
-        raise AIAssistantError(f"HTTP {response.status_code}: {error_msg}")
+        yield DEFAULT_ERROR

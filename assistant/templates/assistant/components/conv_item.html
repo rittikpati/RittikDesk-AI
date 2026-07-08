@@ -1,0 +1,11 @@
+<div class="chat-conv-item{% if active_conversation and conv.pk == active_conversation.pk %} active{% endif %}" data-id="{{ conv.pk }}" role="option" aria-selected="{% if active_conversation and conv.pk == active_conversation.pk %}true{% else %}false{% endif %}">
+  <a class="chat-conv-link" href="{% url 'assistant:chat' conv.pk %}" tabindex="0">
+    <i class="fas fa-comment"></i>
+    <span class="chat-conv-title">{{ conv.title|truncatechars:35 }}</span>
+  </a>
+  <div class="chat-conv-actions">
+    <button class="chat-conv-btn chat-pin-btn{% if pinned %} pinned{% endif %}" title="{% if pinned %}Unpin{% else %}Pin{% endif %}" aria-label="{% if pinned %}Unpin conversation{% else %}Pin conversation{% endif %}"><i class="fas fa-thumbtack"></i></button>
+    <button class="chat-conv-btn chat-rename-btn" title="Rename" aria-label="Rename conversation"><i class="fas fa-pencil"></i></button>
+    <button class="chat-conv-btn chat-delete-btn" title="Delete" aria-label="Delete conversation"><i class="fas fa-trash"></i></button>
+  </div>
+</div>

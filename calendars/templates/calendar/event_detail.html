@@ -1,0 +1,126 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ event.title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'calendar/css/calendar.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="calendar-header">
+  <h2>Event Details</h2>
+  <a href="{% url 'calendars:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Calendar</a>
+</div>
+
+<div class="dash-grid" style="grid-template-columns: 1fr 1fr; gap:20px">
+  <div class="dash-card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <div class="event-type-dot event-type-dot--{{ event.event_type }}" style="width:12px;height:12px"></div>
+      <h4 style="margin:0;font-size:1.05rem;font-weight:700">{{ event.title }}</h4>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Status</div>
+      <div class="detail-value"><span class="event-status event-status--{{ event.status }}">{{ event.get_status_display }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Type</div>
+      <div class="detail-value"><span class="event-type-badge event-type-badge--{{ event.event_type }}">{{ event.get_event_type_display }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Date</div>
+      <div class="detail-value">{{ event.start_date|date:'l, F d, Y' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Time</div>
+      <div class="detail-value">
+        {% if event.start_time %}
+        {{ event.start_time|time:'g:i A' }}{% if event.end_time %} — {{ event.end_time|time:'g:i A' }}{% endif %}
+        {% else %}
+        <span style="color:var(--dash-text-ter)">All day</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if event.location %}
+    <div class="detail-section">
+      <div class="detail-label">Location</div>
+      <div class="detail-value"><i class="fas fa-map-marker-alt" style="color:var(--dash-text-ter);width:16px"></i> {{ event.location }}</div>
+    </div>
+    {% endif %}
+
+    {% if event.meeting_link %}
+    <div class="detail-section">
+      <div class="detail-label">Meeting Link</div>
+      <div class="detail-value">
+        <a href="{{ event.meeting_link }}" target="_blank" rel="noopener" style="color:var(--dash-brand)">
+          <i class="fas fa-video" style="margin-right:4px"></i>{{ event.meeting_link|truncatechars:50 }}
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="dash-card">
+    <div class="detail-section">
+      <div class="detail-label">Description</div>
+      <div class="detail-notes-card">{{ event.description|default:'No description provided.'|linebreaks }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Linked Contact</div>
+      <div class="detail-value">
+        {% if event.contact %}
+        <a href="{% url 'contacts:detail' event.contact.pk %}" style="color:var(--dash-brand);text-decoration:none">
+          <i class="fas fa-user" style="margin-right:4px"></i>{{ event.contact.full_name }}
+        </a>
+        {% else %}
+        <span style="color:var(--dash-text-ter)">—</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Linked Lead</div>
+      <div class="detail-value">
+        {% if event.lead %}
+        <a href="{% url 'leads:detail' event.lead.pk %}" style="color:var(--dash-brand);text-decoration:none">
+          <i class="fas fa-tag" style="margin-right:4px"></i>{{ event.lead.lead_name }}
+        </a>
+        {% else %}
+        <span style="color:var(--dash-text-ter)">—</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Linked Task</div>
+      <div class="detail-value">
+        {% if event.task %}
+        <a href="{% url 'tasks:detail' event.task.pk %}" style="color:var(--dash-brand);text-decoration:none">
+          <i class="fas fa-tasks" style="margin-right:4px"></i>{{ event.task.title }}
+        </a>
+        {% else %}
+        <span style="color:var(--dash-text-ter)">—</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="detail-actions" style="margin-top:20px">
+      <a href="{% url 'calendars:update' event.pk %}" class="btn btn-primary rounded-pill px-3 glow-btn btn-sm">
+        <i class="fas fa-edit me-1"></i>Edit
+      </a>
+      <a href="{% url 'calendars:delete' event.pk %}" class="btn rounded-pill px-3 btn-sm" style="background:rgba(255,107,107,0.1);color:var(--dash-red);border:1px solid rgba(255,107,107,0.15)">
+        <i class="fas fa-trash me-1"></i>Delete
+      </a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

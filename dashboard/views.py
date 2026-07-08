@@ -4,6 +4,7 @@ from contacts.models import Contact
 from leads.models import Lead
 from campaigns.models import Campaign
 from tasks.models import Task
+from calendars.models import Event
 from django.utils import timezone
 from datetime import timedelta
 
@@ -42,6 +43,10 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         overdue_tasks = tasks_qs.filter(due_date__lt=today, status='pending').count()
         recent_tasks = tasks_qs.order_by('-created_at')[:5]
 
+        total_events = Event.objects.filter(owner=user).count()
+        today_events = Event.objects.filter(owner=user, start_date=today).count()
+        upcoming_events = Event.objects.filter(owner=user, start_date__gte=today, status='scheduled').order_by('start_date', 'start_time')[:5]
+
         context['total_contacts'] = total_contacts
         context['new_contacts_month'] = new_contacts_month
         context['recent_contacts'] = recent_contacts
@@ -61,5 +66,8 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         context['completed_tasks'] = completed_tasks
         context['overdue_tasks'] = overdue_tasks
         context['recent_tasks'] = recent_tasks
+        context['total_events'] = total_events
+        context['today_events'] = today_events
+        context['upcoming_events'] = upcoming_events
         context['today'] = today
         return context

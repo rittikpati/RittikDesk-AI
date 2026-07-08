@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost,.vercel.app').split(',')]
 
@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'assistant',
     'analytics',
     'tasks',
+    'calendars',
     'core',
 ]
 
@@ -121,6 +122,10 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # ========================= Internationalization =========================
 
@@ -195,29 +200,75 @@ CORS_ALLOWED_ORIGINS = [
 
 CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app']
 
-# ========================= Email, Logging & Others =========================
+# ========================= Email Configuration =========================
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+if DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'RittikDesk AI <noreply@rittikdesk.com>')
 
 LOGIN_URL = 'accounts:login'
 LOGIN_REDIRECT_URL = 'dashboard:home'
 LOGOUT_REDIRECT_URL = 'core:landing'
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
-        'console': {'class': 'logging.StreamHandler'},
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
-        'assistant.services.ai_service': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'assistant.services': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'calendars': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': True,
         },
     },
 }
+
+if not DEBUG:
+    LOGGING['handlers']['file'] = {
+        'class': 'logging.handlers.RotatingFileHandler',
+        'filename': BASE_DIR / 'logs' / 'django.log',
+        'maxBytes': 10 * 1024 * 1024,
+        'backupCount': 5,
+        'formatter': 'verbose',
+    }
+    LOGGING['loggers']['django']['handlers'] = ['console', 'file']
+    LOGGING['loggers']['assistant.services']['handlers'] = ['console', 'file']
+    LOGGING['loggers']['calendars']['handlers'] = ['console', 'file']

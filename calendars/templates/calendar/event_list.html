@@ -1,0 +1,262 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Calendar - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'calendar/css/calendar.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="calendar-header">
+  <h2>Calendar</h2>
+  <div class="calendar-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="eventSearch" placeholder="Search events..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+    </div>
+    <div class="filter-group">
+      <select id="eventTypeFilter">
+        <option value="">All Types</option>
+        {% for val, label in event_type_choices %}
+        <option value="{{ val }}" {% if active_event_type == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select id="statusFilter">
+        <option value="">All Status</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if active_status == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="view-toggle">
+      <a href="?view=list{% if search_query %}&search={{ search_query|urlencode }}{% endif %}{% if active_event_type %}&event_type={{ active_event_type|urlencode }}{% endif %}{% if active_status %}&status={{ active_status|urlencode }}{% endif %}" class="view-toggle-btn{% if active_view == 'list' %} active{% endif %}" title="List View"><i class="fas fa-list"></i></a>
+      <a href="?view=month&year={{ year }}&month={{ month }}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}{% if active_event_type %}&event_type={{ active_event_type|urlencode }}{% endif %}{% if active_status %}&status={{ active_status|urlencode }}{% endif %}" class="view-toggle-btn{% if active_view == 'month' %} active{% endif %}" title="Month View"><i class="fas fa-calendar-alt"></i></a>
+      <a href="?view=upcoming{% if search_query %}&search={{ search_query|urlencode }}{% endif %}{% if active_event_type %}&event_type={{ active_event_type|urlencode }}{% endif %}{% if active_status %}&status={{ active_status|urlencode }}{% endif %}" class="view-toggle-btn{% if active_view == 'upcoming' %} active{% endif %}" title="Upcoming"><i class="fas fa-arrow-right"></i></a>
+      <a href="?view=today{% if search_query %}&search={{ search_query|urlencode }}{% endif %}{% if active_event_type %}&event_type={{ active_event_type|urlencode }}{% endif %}{% if active_status %}&status={{ active_status|urlencode }}{% endif %}" class="view-toggle-btn{% if active_view == 'today' %} active{% endif %}" title="Today"><i class="fas fa-calendar-day"></i></a>
+    </div>
+    <a href="{% url 'calendars:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+      <i class="fas fa-plus me-1"></i>Add Event
+    </a>
+  </div>
+</div>
+
+<div class="dash-card" id="calendarCard">
+  {% if active_view == 'month' %}
+  <div class="calendar-month-nav">
+    <a href="?view=month&year={{ prev_year }}&month={{ prev_month }}" class="month-nav-btn"><i class="fas fa-chevron-left"></i></a>
+    <span class="month-nav-label">{{ month_year }}</span>
+    <a href="?view=month&year={{ next_year }}&month={{ next_month }}" class="month-nav-btn"><i class="fas fa-chevron-right"></i></a>
+  </div>
+  <div class="calendar-month-grid">
+    <div class="calendar-month-row calendar-month-header">
+      <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+    </div>
+    {% for week in calendar_days %}
+    <div class="calendar-month-row">
+      {% for day in week %}
+      <div class="calendar-month-cell{% if day == 0 %} calendar-month-cell--empty{% endif %}{% if day == today.day and month == today.month and year == today.year %} calendar-month-cell--today{% endif %}">
+        {% if day > 0 %}
+        <span class="calendar-month-day">{{ day }}</span>
+        {% with date_obj=month_start|date:'Y-m-d' %}
+        {% endwith %}
+        {% for day_events in events_by_date.items %}
+          {% if day_events.0.day == day and day_events.0.month == month and day_events.0.year == year %}
+            {% for e in day_events.1 %}
+            <a href="{% url 'calendars:detail' e.pk %}" class="calendar-month-event calendar-month-event--{{ e.event_type }}" title="{{ e.title }}{% if e.start_time %} ({{ e.start_time|time:'g:i A' }}){% endif %}">
+              {% if e.start_time %}{{ e.start_time|time:'g:i A' }} {% endif %}{{ e.title|truncatechars:20 }}
+            </a>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  {% if events %}
+  <div class="dash-table-wrap">
+    <table class="dash-table events-table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="eventsResults">
+        {% for event in events %}
+        <tr>
+          <td>
+            <div class="dash-td-name">
+              <div class="event-type-dot event-type-dot--{{ event.event_type }}"></div>
+              <div>
+                <div class="event-title">{{ event.title }}</div>
+                {% if event.location %}<div class="event-location-preview"><i class="fas fa-map-marker-alt"></i> {{ event.location|truncatechars:40 }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="event-date">{{ event.start_date|date:'M d, Y' }}</span>
+          </td>
+          <td>
+            {% if event.start_time %}
+            <span class="event-time">{{ event.start_time|time:'g:i A' }}{% if event.end_time %} - {{ event.end_time|time:'g:i A' }}{% endif %}</span>
+            {% else %}
+            <span style="color:var(--dash-text-ter);font-size:0.7rem">All day</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="event-type-badge event-type-badge--{{ event.event_type }}">{{ event.get_event_type_display }}</span>
+          </td>
+          <td>
+            <span class="event-status event-status--{{ event.status }}">{{ event.get_status_display }}</span>
+          </td>
+          <td>
+            <a href="{% url 'calendars:detail' event.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            <a href="{% url 'calendars:update' event.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'calendars:delete' event.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="calendar-pagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&event_type={{ active_event_type|urlencode }}&status={{ active_status|urlencode }}&view={{ active_view }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&event_type={{ active_event_type|urlencode }}&status={{ active_status|urlencode }}&view={{ active_view }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% else %}
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&event_type={{ active_event_type|urlencode }}&status={{ active_status|urlencode }}&view={{ active_view }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&event_type={{ active_event_type|urlencode }}&status={{ active_status|urlencode }}&view={{ active_view }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&event_type={{ active_event_type|urlencode }}&status={{ active_status|urlencode }}&view={{ active_view }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
+    {% endif %}
+  </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="calendar-empty">
+    <div class="calendar-empty-icon"><i class="fas fa-calendar-alt"></i></div>
+    {% if search_query or active_event_type or active_status %}
+    <h4>No events found</h4>
+    <p>Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+    {% else %}
+    <h4>No events yet</h4>
+    <p>Create your first event to stay organized.</p>
+    <a href="{% url 'calendars:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Create Your First Event
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function () {
+  function getParams() {
+    var params = new URLSearchParams(window.location.search);
+    return {
+      search: params.get('search') || '',
+      event_type: params.get('event_type') || '',
+      status: params.get('status') || '',
+      view: params.get('view') || 'list',
+    };
+  }
+
+  function navigate() {
+    var p = getParams();
+    var search = document.getElementById('eventSearch');
+    var type = document.getElementById('eventTypeFilter');
+    var status = document.getElementById('statusFilter');
+    if (search) p.search = search.value.trim();
+    if (type) p.event_type = type.value;
+    if (status) p.status = status.value;
+    var qs = new URLSearchParams();
+    if (p.search) qs.set('search', p.search);
+    if (p.event_type) qs.set('event_type', p.event_type);
+    if (p.status) qs.set('status', p.status);
+    if (p.view !== 'list') qs.set('view', p.view);
+    var url = '?' + qs.toString();
+    if (url !== window.location.search) window.location.href = url;
+  }
+
+  var searchInput = document.getElementById('eventSearch');
+  var searchClear = document.getElementById('searchClear');
+  var searchBox = searchInput ? searchInput.closest('.search-box') : null;
+  var typeFilter = document.getElementById('eventTypeFilter');
+  var statusFilter = document.getElementById('statusFilter');
+  var clearBtn = document.getElementById('clearFiltersBtn');
+
+  function updateSearchUI() {
+    if (searchClear) {
+      searchClear.classList.toggle('is-visible', searchInput.value.length > 0);
+    }
+  }
+
+  if (searchInput) {
+    var timer = null;
+    searchInput.addEventListener('input', function () {
+      updateSearchUI();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(navigate, 400);
+    });
+    searchInput.addEventListener('focus', function () {
+      if (searchBox) searchBox.classList.add('is-focused');
+    });
+    searchInput.addEventListener('blur', function () {
+      if (searchBox) searchBox.classList.remove('is-focused');
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', function () {
+      if (searchInput) searchInput.value = '';
+      updateSearchUI();
+      navigate();
+    });
+  }
+  if (typeFilter) typeFilter.addEventListener('change', navigate);
+  if (statusFilter) statusFilter.addEventListener('change', navigate);
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    window.location.href = '?';
+  });
+
+  updateSearchUI();
+})();
+</script>
+{% endblock %}

@@ -1,16 +1,12 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView, CreateView, DetailView, UpdateView, DeleteView, View
-from django.urls import reverse_lazy, reverse
+from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db.models import Q
 from django.http import JsonResponse
+from core.mixins import OwnerFilterMixin
 from .models import Campaign
 from .forms import CampaignForm
-
-
-class OwnerFilterMixin(LoginRequiredMixin):
-    def get_queryset(self):
-        return Campaign.objects.filter(owner=self.request.user).select_related('owner')
 
 
 class CampaignListView(OwnerFilterMixin, ListView):
@@ -34,7 +30,7 @@ class CampaignListView(OwnerFilterMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['total_campaigns'] = self.get_queryset().count()
+        context['total_campaigns'] = self.object_list.count()
         context['search_query'] = self.request.GET.get('search', '')
         context['active_status'] = self.request.GET.get('status', '')
         context['status_choices'] = ['Draft', 'Scheduled', 'Sent']

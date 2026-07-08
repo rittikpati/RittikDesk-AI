@@ -1,34 +1,107 @@
 import json
 import logging
+from datetime import datetime, timedelta
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView, DetailView, CreateView, DeleteView, View, UpdateView
 from django.urls import reverse_lazy
 from django.http import JsonResponse, HttpResponse, StreamingHttpResponse
-from django.db.models import Max
+from django.db.models import Max, Prefetch
 from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
 
 from .models import Conversation, Message, Category
 from .forms import MessageForm
-from .services.ai_service import AIService
+from .services.ai_service import AIService, DEFAULT_ERROR, _user_message
 from .services.exceptions import AIAssistantError
-from .utils import sanitize_message, truncate_title
+from .utils import sanitize_message, truncate_title, generate_title, infer_intent
 
 logger = logging.getLogger(__name__)
 
+MAX_PINNED = 5
+
 
 def _common_context(user):
-    conversations = Conversation.objects.filter(user=user)
+    conversations = Conversation.objects.filter(user=user).prefetch_related('messages')
     pinned = conversations.filter(pinned=True)
-    categories = list(Category.objects.filter(user=user))
-    category_data = [(c, conversations.filter(category=c, pinned=False)) for c in categories]
-    general = conversations.filter(category__isnull=True, pinned=False)
+
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
+    week_start = today_start - timedelta(days=7)
+    month_start = today_start - timedelta(days=30)
+
+    unpinned = conversations.filter(pinned=False)
+
+    today = unpinned.filter(created_at__gte=today_start)
+    yesterday = unpinned.filter(created_at__gte=yesterday_start, created_at__lt=today_start)
+    prev_week = unpinned.filter(created_at__gte=week_start, created_at__lt=yesterday_start)
+    prev_month = unpinned.filter(created_at__gte=month_start, created_at__lt=week_start)
+    older = unpinned.filter(created_at__lt=month_start)
+
+    time_groups = []
+    if today.exists():
+        time_groups.append(('Today', today))
+    if yesterday.exists():
+        time_groups.append(('Yesterday', yesterday))
+    if prev_week.exists():
+        time_groups.append(('Previous 7 Days', prev_week))
+    if prev_month.exists():
+        time_groups.append(('Previous 30 Days', prev_month))
+    if older.exists():
+        time_groups.append(('Older', older))
+
     return {
-        'categories': categories,
-        'category_data': category_data,
         'pinned_conversations': pinned,
-        'uncategorized_conversations': general,
+        'time_groups': time_groups,
     }
+
+
+def _event_stream(conversation):
+    """Yield SSE events for an AI streamed response, saving the result."""
+    full_content = ''
+    saved = False
+    try:
+        history = list(conversation.messages.all())
+        service = AIService()
+        for token in service.generate_stream(history):
+            full_content += token
+            yield f'data: {json.dumps({"t": token})}\n\n'
+
+        Message.objects.create(
+            conversation=conversation, role='assistant', content=full_content
+        )
+        saved = True
+        yield f'data: {json.dumps({"done": True})}\n\n'
+    except AIAssistantError as e:
+        logger.error('Stream AI error: %s', e)
+        yield f'data: {json.dumps({"e": _user_message(e)})}\n\n'
+    except Exception:
+        logger.exception('Stream unexpected error')
+        yield f'data: {json.dumps({"e": "Something unexpected happened. Please try again."})}\n\n'
+    finally:
+        if full_content and not saved:
+            try:
+                Message.objects.create(
+                    conversation=conversation, role='assistant', content=full_content
+                )
+            except Exception:
+                logger.exception('Failed to save partial streamed message')
+
+
+def _streaming_response(generator):
+    resp = StreamingHttpResponse(generator(), content_type='text/event-stream')
+    resp['Cache-Control'] = 'no-cache'
+    resp['X-Accel-Buffering'] = 'no'
+    return resp
+
+
+def _prepare_user_message(conversation, content):
+    """Create a user message and update the title if needed."""
+    Message.objects.create(conversation=conversation, role='user', content=content)
+    if conversation.title == 'New Chat':
+        conversation.title = generate_title(content)
+        conversation.save(update_fields=['title'])
 
 
 class ChatListView(LoginRequiredMixin, ListView):
@@ -37,7 +110,7 @@ class ChatListView(LoginRequiredMixin, ListView):
     context_object_name = 'conversations'
 
     def get_queryset(self):
-        return Conversation.objects.filter(user=self.request.user)
+        return Conversation.objects.filter(user=self.request.user).prefetch_related('messages')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -52,11 +125,13 @@ class ChatDetailView(LoginRequiredMixin, DetailView):
     context_object_name = 'active_conversation'
 
     def get_queryset(self):
-        return Conversation.objects.filter(user=self.request.user)
+        return Conversation.objects.filter(user=self.request.user).prefetch_related(
+            Prefetch('messages', queryset=Message.objects.order_by('created_at'))
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['conversations'] = Conversation.objects.filter(user=self.request.user)
+        context['conversations'] = Conversation.objects.filter(user=self.request.user).prefetch_related('messages')
         context['form'] = MessageForm()
         context['messages'] = self.object.messages.all()
         context.update(_common_context(self.request.user))
@@ -71,6 +146,12 @@ class ChatCreateView(LoginRequiredMixin, View):
 
     def post(self, request):
         conversation = Conversation.objects.create(user=request.user)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({
+                'id': conversation.pk,
+                'title': conversation.title,
+                'url': reverse('assistant:chat', args=[conversation.pk]),
+            })
         return redirect('assistant:chat', pk=conversation.pk)
 
 
@@ -107,10 +188,23 @@ class ChatExportView(LoginRequiredMixin, DetailView):
     model = Conversation
 
     def get_queryset(self):
-        return Conversation.objects.filter(user=self.request.user)
+        return Conversation.objects.filter(user=self.request.user).prefetch_related('messages')
 
     def render_to_response(self, context):
         conversation = self.object
+        export_format = self.request.GET.get('format', 'md')
+
+        if export_format == 'txt':
+            lines = [f'=== {conversation.title} ===', '', f'Exported from RittikDesk AI', '', '---', '']
+            for msg in conversation.messages.all():
+                prefix = 'You:' if msg.role == 'user' else 'Assistant:'
+                lines.append(f'{prefix}\n{msg.content}\n')
+            content = '\n'.join(lines)
+            filename = conversation.title.replace(' ', '_')[:50]
+            response = HttpResponse(content, content_type='text/plain')
+            response['Content-Disposition'] = f'attachment; filename="{filename}.txt"'
+            return response
+
         lines = [f'# {conversation.title}', '', f'*Exported from RittikDesk AI*', '', '---', '']
         for msg in conversation.messages.all():
             prefix = '**You:**' if msg.role == 'user' else '**Assistant:**'
@@ -132,11 +226,7 @@ class ChatMessageView(LoginRequiredMixin, View):
             return JsonResponse({'error': 'Invalid message.'}, status=400)
 
         content = sanitize_message(form.cleaned_data['message'])
-        Message.objects.create(conversation=conversation, role='user', content=content)
-
-        if conversation.title == 'New Chat':
-            conversation.title = truncate_title(content)
-            conversation.save(update_fields=['title'])
+        _prepare_user_message(conversation, content)
 
         try:
             service = AIService()
@@ -145,7 +235,7 @@ class ChatMessageView(LoginRequiredMixin, View):
             Message.objects.create(conversation=conversation, role='assistant', content=reply)
             return JsonResponse({'reply': reply, 'conversation_id': conversation.pk})
         except AIAssistantError as e:
-            return JsonResponse({'error': str(e)}, status=503)
+            return JsonResponse({'error': _user_message(e)}, status=503)
 
 
 class ChatMessageStreamView(LoginRequiredMixin, View):
@@ -153,7 +243,6 @@ class ChatMessageStreamView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         conversation = get_object_or_404(Conversation, pk=pk, user=request.user)
-
         is_regenerate = request.POST.get('regenerate') == 'true'
 
         if not is_regenerate:
@@ -161,46 +250,9 @@ class ChatMessageStreamView(LoginRequiredMixin, View):
             if not form.is_valid():
                 return JsonResponse({'error': 'Invalid message.'}, status=400)
             content = sanitize_message(form.cleaned_data['message'])
-            Message.objects.create(conversation=conversation, role='user', content=content)
+            _prepare_user_message(conversation, content)
 
-            if conversation.title == 'New Chat':
-                conversation.title = truncate_title(content)
-                conversation.save(update_fields=['title'])
-
-        def event_stream():
-            full_content = ''
-            saved = False
-            try:
-                history = list(conversation.messages.all())
-                service = AIService()
-                for token in service.generate_stream(history):
-                    full_content += token
-                    yield f'data: {json.dumps({"t": token})}\n\n'
-
-                Message.objects.create(
-                    conversation=conversation, role='assistant', content=full_content
-                )
-                saved = True
-                yield f'data: {json.dumps({"done": True})}\n\n'
-            except AIAssistantError as e:
-                logger.error('Stream AI error: %s', e)
-                yield f'data: {json.dumps({"e": str(e)})}\n\n'
-            except Exception as e:
-                logger.exception('Stream unexpected error')
-                yield f'data: {json.dumps({"e": "An unexpected error occurred."})}\n\n'
-            finally:
-                if full_content and not saved:
-                    try:
-                        Message.objects.create(
-                            conversation=conversation, role='assistant', content=full_content
-                        )
-                    except Exception:
-                        logger.exception('Failed to save partial streamed message')
-
-        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'
-        return response
+        return _streaming_response(lambda: _event_stream(conversation))
 
 
 class ChatEditMessageView(LoginRequiredMixin, View):
@@ -218,43 +270,10 @@ class ChatEditMessageView(LoginRequiredMixin, View):
         conversation.messages.filter(pk__gt=pk).delete()
 
         if conversation.title == 'New Chat':
-            conversation.title = truncate_title(content)
+            conversation.title = generate_title(content)
             conversation.save(update_fields=['title'])
 
-        def event_stream():
-            full_content = ''
-            saved = False
-            try:
-                history = list(conversation.messages.all())
-                service = AIService()
-                for token in service.generate_stream(history):
-                    full_content += token
-                    yield f'data: {json.dumps({"t": token})}\n\n'
-
-                Message.objects.create(
-                    conversation=conversation, role='assistant', content=full_content
-                )
-                saved = True
-                yield f'data: {json.dumps({"done": True})}\n\n'
-            except AIAssistantError as e:
-                logger.error('Edit stream AI error: %s', e)
-                yield f'data: {json.dumps({"e": str(e)})}\n\n'
-            except Exception as e:
-                logger.exception('Edit stream unexpected error')
-                yield f'data: {json.dumps({"e": "An unexpected error occurred."})}\n\n'
-            finally:
-                if full_content and not saved:
-                    try:
-                        Message.objects.create(
-                            conversation=conversation, role='assistant', content=full_content
-                        )
-                    except Exception:
-                        logger.exception('Failed to save edited streamed message')
-
-        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'
-        return response
+        return _streaming_response(lambda: _event_stream(conversation))
 
 
 class ChatPinToggleView(LoginRequiredMixin, View):
@@ -262,9 +281,13 @@ class ChatPinToggleView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         conversation = get_object_or_404(Conversation, pk=pk, user=request.user)
+        if not conversation.pinned:
+            pinned_count = Conversation.objects.filter(user=request.user, pinned=True).count()
+            if pinned_count >= MAX_PINNED:
+                return JsonResponse({'error': 'Maximum 5 pinned chats allowed.'}, status=400)
         conversation.pinned = not conversation.pinned
         conversation.save(update_fields=['pinned'])
-        return JsonResponse({'pinned': conversation.pinned})
+        return JsonResponse({'pinned': conversation.pinned, 'max_pinned': MAX_PINNED})
 
 
 class CategoryCreateView(LoginRequiredMixin, View):

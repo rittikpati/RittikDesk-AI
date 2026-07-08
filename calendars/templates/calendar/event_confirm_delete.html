@@ -1,0 +1,81 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Delete Event - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'calendar/css/calendar.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="calendar-header">
+  <h2>Delete Event</h2>
+  <a href="{% url 'calendars:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Calendar</a>
+</div>
+
+<div class="dash-card" style="max-width:480px">
+  <div style="text-align:center;padding:10px 0" id="initialStage">
+    <div class="bulk-modal-icon"><i class="fas fa-exclamation-triangle"></i></div>
+    <h4 style="font-weight:600;margin-bottom:6px">Delete "{{ event.title }}"?</h4>
+    <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:6px">{{ event.start_date|date:'M d, Y' }}{% if event.start_time %} at {{ event.start_time|time:'g:i A' }}{% endif %}</p>
+    <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:16px">This action cannot be undone.</p>
+    <button type="button" class="btn rounded-pill px-4 glow-btn" id="confirmDeleteBtn" style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+      <i class="fas fa-trash me-1"></i>Delete Event
+    </button>
+    <a href="{% url 'calendars:detail' event.pk %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+  </div>
+
+  <div style="display:none;text-align:center;padding:10px 0" id="deleteStage">
+    <h4 style="font-weight:600;margin-bottom:6px">Are you sure?</h4>
+    <p style="font-size:0.82rem;color:var(--dash-text-sec);margin-bottom:12px">Type <strong style="color:var(--dash-red)">delete</strong> to confirm.</p>
+    <form method="post" id="deleteForm" style="max-width:280px;margin:0 auto">
+      {% csrf_token %}
+      <input type="text" name="confirm" class="form-control text-center" id="deleteConfirmInput" placeholder="type delete" autocomplete="off" required>
+      <div class="d-flex gap-2 justify-content-center mt-3">
+        <button type="submit" class="btn rounded-pill px-4" id="deleteSubmitBtn" disabled style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+          <i class="fas fa-trash me-1"></i>Permanently Delete
+        </button>
+        <button type="button" class="btn btn-outline-light btn-sm rounded-pill px-3" id="cancelDeleteBtn">Go Back</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function () {
+  var initialStage = document.getElementById('initialStage');
+  var deleteStage = document.getElementById('deleteStage');
+  var confirmBtn = document.getElementById('confirmDeleteBtn');
+  var cancelBtn = document.getElementById('cancelDeleteBtn');
+  var deleteInput = document.getElementById('deleteConfirmInput');
+  var deleteSubmit = document.getElementById('deleteSubmitBtn');
+
+  if (confirmBtn && deleteStage && initialStage) {
+    confirmBtn.addEventListener('click', function () {
+      initialStage.style.display = 'none';
+      deleteStage.style.display = 'block';
+      if (deleteInput) deleteInput.focus();
+    });
+  }
+  if (cancelBtn && deleteStage && initialStage) {
+    cancelBtn.addEventListener('click', function () {
+      deleteStage.style.display = 'none';
+      initialStage.style.display = 'block';
+      if (deleteInput) deleteInput.value = '';
+      if (deleteSubmit) deleteSubmit.disabled = true;
+    });
+  }
+  if (deleteInput && deleteSubmit) {
+    deleteInput.addEventListener('input', function () {
+      deleteSubmit.disabled = deleteInput.value.trim().toLowerCase() !== 'delete';
+    });
+  }
+})();
+</script>
+{% endblock %}

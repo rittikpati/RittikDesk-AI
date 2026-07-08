@@ -6,6 +6,7 @@ from django.urls import reverse_lazy, reverse
 from django.contrib import messages
 from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
+from core.mixins import OwnerFilterMixin
 from .models import Contact
 from .forms import ContactForm
 
@@ -19,11 +20,6 @@ SORT_MAP = {
     'company_desc': '-company',
 }
 TAG_CHOICES = ['Client', 'Lead', 'Prospect', 'VIP', 'Partner']
-
-
-class OwnerFilterMixin(LoginRequiredMixin):
-    def get_queryset(self):
-        return Contact.objects.filter(owner=self.request.user).select_related('owner')
 
 
 def apply_filters(qs, search, tag, sort):
@@ -56,7 +52,7 @@ class ContactListView(OwnerFilterMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['total_contacts'] = self.get_queryset().count()
+        context['total_contacts'] = self.object_list.count()
         context['search_query'] = self.request.GET.get('search', '')
         context['active_tag'] = self.request.GET.get('tag', '')
         context['sort_by'] = self.request.GET.get('sort', 'newest')

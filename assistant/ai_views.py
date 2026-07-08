@@ -12,6 +12,7 @@ from contacts.models import Contact
 from leads.models import Lead
 from .services.ai_crm_service import AICRMService
 from .services.exceptions import AIAssistantError
+from .services.ai_service import _user_message
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,10 @@ class ContactAISummaryView(LoginRequiredMixin, View):
             summary = service.contact_summary(contact)
             return JsonResponse({'summary': summary})
         except AIAssistantError as e:
-            return JsonResponse({'error': str(e)}, status=503)
-        except Exception as e:
+            return JsonResponse({'error': _user_message(e)}, status=503)
+        except Exception:
             logger.exception('Contact AI summary failed')
-            return JsonResponse({'error': 'Failed to generate summary.'}, status=500)
+            return JsonResponse({'error': 'Failed to generate summary. Please try again.'}, status=500)
 
 
 class LeadAIScoreView(LoginRequiredMixin, View):
@@ -42,10 +43,10 @@ class LeadAIScoreView(LoginRequiredMixin, View):
             result = service.lead_score(lead)
             return JsonResponse(result)
         except AIAssistantError as e:
-            return JsonResponse({'error': str(e)}, status=503)
-        except Exception as e:
+            return JsonResponse({'error': _user_message(e)}, status=503)
+        except Exception:
             logger.exception('Lead AI score failed')
-            return JsonResponse({'error': 'Failed to analyze lead.'}, status=500)
+            return JsonResponse({'error': 'Failed to analyze lead. Please try again.'}, status=500)
 
 
 class GenerateEmailView(LoginRequiredMixin, View):
@@ -68,10 +69,10 @@ class GenerateEmailView(LoginRequiredMixin, View):
             result = service.generate_email(contact, email_type)
             return JsonResponse(result)
         except AIAssistantError as e:
-            return JsonResponse({'error': str(e)}, status=503)
-        except Exception as e:
+            return JsonResponse({'error': _user_message(e)}, status=503)
+        except Exception:
             logger.exception('Email generation failed')
-            return JsonResponse({'error': 'Failed to generate email.'}, status=500)
+            return JsonResponse({'error': 'Failed to generate email. Please try again.'}, status=500)
 
 
 class FollowUpSuggestionsView(LoginRequiredMixin, View):
@@ -84,10 +85,10 @@ class FollowUpSuggestionsView(LoginRequiredMixin, View):
             suggestions = service.follow_up_suggestions(lead)
             return JsonResponse({'suggestions': suggestions})
         except AIAssistantError as e:
-            return JsonResponse({'error': str(e)}, status=503)
-        except Exception as e:
+            return JsonResponse({'error': _user_message(e)}, status=503)
+        except Exception:
             logger.exception('Follow-up suggestions failed')
-            return JsonResponse({'error': 'Failed to generate suggestions.'}, status=500)
+            return JsonResponse({'error': 'Failed to generate suggestions. Please try again.'}, status=500)
 
 
 class CRMInsightsView(LoginRequiredMixin, View):
@@ -150,10 +151,10 @@ class CRMInsightsView(LoginRequiredMixin, View):
             result['stats'] = stats
             return JsonResponse(result)
         except AIAssistantError as e:
-            return JsonResponse({'error': str(e), 'stats': stats}, status=503)
-        except Exception as e:
+            return JsonResponse({'error': _user_message(e), 'stats': stats}, status=503)
+        except Exception:
             logger.exception('CRM insights failed')
-            return JsonResponse({'error': 'Failed to generate insights.', 'stats': stats}, status=500)
+            return JsonResponse({'error': 'Failed to generate insights. Please try again.', 'stats': stats}, status=500)
 
 
 class DailyRecommendationsView(LoginRequiredMixin, View):
@@ -207,7 +208,7 @@ class DailyRecommendationsView(LoginRequiredMixin, View):
             recommendations = service.daily_recommendations(stats)
             return JsonResponse({'recommendations': recommendations, 'stats': stats})
         except AIAssistantError as e:
-            return JsonResponse({'error': str(e)}, status=503)
-        except Exception as e:
+            return JsonResponse({'error': _user_message(e)}, status=503)
+        except Exception:
             logger.exception('Daily recommendations failed')
-            return JsonResponse({'error': 'Failed to generate recommendations.'}, status=500)
+            return JsonResponse({'error': 'Failed to generate recommendations. Please try again.'}, status=500)

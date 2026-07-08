@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth import get_user_model
+from core.mixins import OwnerFilterMixin
 from .models import Lead
 from .forms import LeadForm
 
@@ -26,11 +27,6 @@ SORT_MAP = {
 STATUS_CHOICES = ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation', 'Won', 'Lost']
 PRIORITY_CHOICES = ['Low', 'Medium', 'High', 'Urgent']
 SOURCE_CHOICES = ['Website', 'Referral', 'LinkedIn', 'Facebook', 'Instagram', 'Cold Email', 'Event', 'Other']
-
-
-class OwnerFilterMixin(LoginRequiredMixin):
-    def get_queryset(self):
-        return Lead.objects.filter(owner=self.request.user).select_related('owner', 'assigned_user')
 
 
 def apply_filters(qs, search, status_filter, priority_filter, source_filter, sort):
@@ -70,7 +66,7 @@ class LeadListView(OwnerFilterMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['total_leads'] = self.get_queryset().count()
+        context['total_leads'] = self.object_list.count()
         context['search_query'] = self.request.GET.get('search', '')
         context['active_status'] = self.request.GET.get('status', '')
         context['active_priority'] = self.request.GET.get('priority', '')
