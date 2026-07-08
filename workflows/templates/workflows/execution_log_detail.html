@@ -1,0 +1,89 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Execution Log - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'workflows/css/workflows.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="workflows-header">
+  <h2>Execution Log</h2>
+  <a href="{% url 'workflows:detail' log.workflow_id %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Workflow</a>
+</div>
+
+<div class="dash-card">
+  <div class="row g-3">
+    <div class="col-md-3">
+      <div class="detail-label">Workflow</div>
+      <div class="detail-value">{{ log.workflow.name }}</div>
+    </div>
+    <div class="col-md-3">
+      <div class="detail-label">Trigger</div>
+      <div class="detail-value"><span class="badge" style="background:var(--dash-surface)">{{ log.trigger_type }}</span></div>
+    </div>
+    <div class="col-md-3">
+      <div class="detail-label">Status</div>
+      <div class="detail-value">
+        <span class="wf-status wf-status--{{ log.status }}">{{ log.get_status_display }}</span>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="detail-label">Duration</div>
+      <div class="detail-value small" style="color:var(--dash-text-sec)">
+        {% if log.completed_at %}
+        {{ log.started_at|timesince:log.completed_at }}
+        {% else %}
+        Running...
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if log.result.actions %}
+<div class="dash-card mt-4">
+  <h5>Action Results</h5>
+  <div class="table-responsive">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Action</th>
+          <th>Status</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for action in log.result.actions %}
+        <tr>
+          <td>{{ action.order }}</td>
+          <td>{{ action.action }}</td>
+          <td>
+            <span class="wf-status wf-status--{{ action.status }}">{{ action.status|title }}</span>
+          </td>
+          <td class="small" style="color:var(--dash-red)">{{ action.error|default:'—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if log.error_message %}
+<div class="dash-card mt-4" style="border-left:3px solid var(--dash-red)">
+  <h6 style="color:var(--dash-red)">Error Message</h6>
+  <pre class="small mb-0" style="color:var(--dash-text-sec);white-space:pre-wrap">{{ log.error_message }}</pre>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'workflows/js/workflows.js' %}"></script>
+{% endblock %}

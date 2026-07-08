@@ -1,0 +1,120 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ workflow.name }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'workflows/css/workflows.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="workflows-header">
+  <h2>{{ workflow.name }}</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'workflows:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Workflows</a>
+    <a href="{% url 'workflows:update' workflow.pk %}" class="btn btn-sm btn-outline-light rounded-pill px-3"><i class="fas fa-pen me-1"></i>Edit</a>
+    <a href="{% url 'workflows:delete' workflow.pk %}" class="btn btn-sm btn-outline-light rounded-pill px-3"><i class="fas fa-trash me-1"></i>Delete</a>
+  </div>
+</div>
+
+<div class="dash-grid" style="grid-template-columns:1fr 1fr;gap:20px">
+  <div class="dash-card">
+    <h5>Details</h5>
+    <div class="detail-section">
+      <div class="detail-label">Trigger</div>
+      <div class="detail-value"><span class="badge" style="background:var(--dash-surface)">{{ workflow.get_trigger_type_display }}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-label">Status</div>
+      <div class="detail-value">
+        <span class="wf-status wf-status--{% if workflow.is_active %}active{% else %}inactive{% endif %}">
+          {{ workflow.is_active|yesno:'Active,Inactive' }}
+        </span>
+      </div>
+    </div>
+    {% if workflow.description %}
+    <div class="detail-section">
+      <div class="detail-label">Description</div>
+      <div class="detail-value">{{ workflow.description }}</div>
+    </div>
+    {% endif %}
+    <div class="detail-section">
+      <div class="detail-label">Created</div>
+      <div class="detail-value small" style="color:var(--dash-text-sec)">{{ workflow.created_at|date:'M d, Y g:i A' }}</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-label">Last Updated</div>
+      <div class="detail-value small" style="color:var(--dash-text-sec)">{{ workflow.updated_at|date:'M d, Y g:i A' }}</div>
+    </div>
+  </div>
+
+  <div class="dash-card">
+    <h5>Actions ({{ actions|length }})</h5>
+    {% if actions %}
+    <ol style="padding-left:20px;margin:0">
+      {% for action in actions %}
+      <li class="mb-2">
+        <strong>{{ action.get_action_type_display }}</strong>
+        {% if action.config %}
+        <pre class="small mt-1" style="color:var(--dash-text-sec);max-height:60px;overflow:auto">{{ action.config }}</pre>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="small" style="color:var(--dash-text-sec)">No actions defined yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="dash-card mt-4">
+  <h5>Recent Executions</h5>
+  {% if execution_logs %}
+  <div class="table-responsive">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Trigger</th>
+          <th>Started</th>
+          <th>Completed</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in execution_logs %}
+        <tr>
+          <td>
+            <span class="wf-status wf-status--{{ log.status }}">
+              {{ log.get_status_display }}
+            </span>
+          </td>
+          <td><span class="badge" style="background:var(--dash-surface)">{{ log.trigger_type }}</span></td>
+          <td class="small" style="color:var(--dash-text-sec)">{{ log.started_at|date:'M d, g:i A' }}</td>
+          <td class="small" style="color:var(--dash-text-sec)">{{ log.completed_at|date:'M d, g:i A'|default:'—' }}</td>
+          <td>
+            {% if log.result.actions %}
+            <span class="small">
+              {{ log.result.actions|length }} actions,
+              {% for a in log.result.actions %}{{ a.status }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="small" style="color:var(--dash-text-sec)">This workflow has not been triggered yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'workflows/js/workflows.js' %}"></script>
+{% endblock %}

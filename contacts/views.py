@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
 from core.mixins import OwnerFilterMixin
+from workflows.services.engine import fire_trigger
 from .models import Contact
 from .forms import ContactForm
 
@@ -77,6 +78,7 @@ class ContactCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
+        fire_trigger('contact_created', form.instance)
         messages.success(self.request, f'Contact "{form.instance.full_name}" created successfully.')
         return response
 
@@ -100,6 +102,7 @@ class ContactUpdateView(OwnerFilterMixin, UpdateView):
 
     def form_valid(self, form):
         response = super().form_valid(form)
+        fire_trigger('contact_created', form.instance)
         messages.success(self.request, f'Contact "{form.instance.full_name}" updated successfully.')
         return response
 

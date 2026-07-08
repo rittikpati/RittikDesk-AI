@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.db.models import Q
 from django.http import JsonResponse
 from core.mixins import OwnerFilterMixin
+from workflows.services.engine import fire_trigger
 from .models import Campaign
 from .forms import CampaignForm
 
@@ -46,6 +47,7 @@ class CampaignCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
+        fire_trigger('campaign_started', form.instance)
         messages.success(self.request, f'Campaign "{form.instance.name}" created successfully.')
         return response
 
@@ -68,7 +70,13 @@ class CampaignUpdateView(OwnerFilterMixin, UpdateView):
     success_url = reverse_lazy('campaigns:list')
 
     def form_valid(self, form):
+        old_status = self.get_object().status
         response = super().form_valid(form)
+        if old_status != form.instance.status:
+            if form.instance.status == 'Scheduled':
+                fire_trigger('campaign_started', form.instance)
+            elif form.instance.status == 'Sent':
+                fire_trigger('campaign_completed', form.instance)
         messages.success(self.request, f'Campaign "{form.instance.name}" updated successfully.')
         return response
 

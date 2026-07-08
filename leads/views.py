@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth import get_user_model
 from core.mixins import OwnerFilterMixin
+from workflows.services.engine import fire_trigger
 from .models import Lead
 from .forms import LeadForm
 
@@ -97,6 +98,7 @@ class LeadCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
+        fire_trigger('lead_created', form.instance)
         messages.success(self.request, f'Lead "{form.instance.lead_name}" created successfully.')
         return response
 
@@ -119,7 +121,17 @@ class LeadUpdateView(OwnerFilterMixin, UpdateView):
     success_url = reverse_lazy('leads:list')
 
     def form_valid(self, form):
+        old_status = self.get_object().status
         response = super().form_valid(form)
+        fire_trigger('lead_updated', form.instance)
+        new_status = form.instance.status
+        if old_status != new_status:
+            if new_status == 'Qualified':
+                fire_trigger('lead_qualified', form.instance)
+            elif new_status == 'Won':
+                fire_trigger('lead_won', form.instance)
+            elif new_status == 'Lost':
+                fire_trigger('lead_lost', form.instance)
         messages.success(self.request, f'Lead "{form.instance.lead_name}" updated successfully.')
         return response
 

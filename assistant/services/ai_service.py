@@ -79,22 +79,27 @@ def _is_placeholder_key(api_key):
 def _truncate_context(messages, max_chars=MAX_CONTEXT_TOKENS * TOKEN_ESTIMATE_FACTOR):
     """Trim oldest messages to stay within a rough token budget.
 
-    Always keeps the system prompt and the most recent messages.
+    Always keeps system-prompt messages and the most recent conversation.
     """
-    total = SYSTEM_PROMPT_TOKENS * TOKEN_ESTIMATE_FACTOR
-    for m in messages:
-        total += len(m.get('content', '')) + 50
-    if total <= max_chars:
+    system_msgs = [m for m in messages if m.get('role') == 'system']
+    history_msgs = [m for m in messages if m.get('role') != 'system']
+
+    system_chars = sum(len(m.get('content', '')) + 50 for m in system_msgs)
+    total_chars = system_chars + sum(
+        len(m.get('content', '')) + 50 for m in history_msgs
+    )
+    if total_chars <= max_chars:
         return messages
 
-    budget = max_chars - (SYSTEM_PROMPT_TOKENS * TOKEN_ESTIMATE_FACTOR)
+    budget = max_chars - system_chars
     trimmed = []
-    for m in reversed(messages):
+    for m in reversed(history_msgs):
         cost = len(m.get('content', '')) + 50
         if budget - cost >= 0:
             trimmed.insert(0, m)
             budget -= cost
-    return trimmed
+
+    return system_msgs + trimmed
 
 
 _session = None
@@ -214,19 +219,21 @@ class AIService:
         if _is_placeholder_key(self.api_key):
             logger.error("OPENROUTER_API_KEY is missing or a placeholder in .env")
 
-    def _format_messages(self, messages):
+    def _format_messages(self, messages, crm_context=None):
         """Convert DB message objects to API format with context trimming."""
         formatted = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+        if crm_context:
+            formatted.append({'role': 'system', 'content': crm_context})
         for msg in messages:
             formatted.append({'role': msg.role, 'content': msg.content})
         return _truncate_context(formatted)
 
-    def generate_response(self, messages):
+    def generate_response(self, messages, crm_context=None):
         """Non-streaming response with automatic fallback."""
         if not self.api_key:
             return API_KEY_MISSING_ERROR
 
-        formatted = self._format_messages(messages)
+        formatted = self._format_messages(messages, crm_context)
 
         for idx, model in enumerate(_models()):
             if idx > 0:
@@ -254,13 +261,13 @@ class AIService:
                     return DEFAULT_ERROR
         return DEFAULT_ERROR
 
-    def generate_stream(self, messages):
+    def generate_stream(self, messages, crm_context=None):
         """Streaming response with automatic fallback. Yields tokens."""
         if not self.api_key:
             yield API_KEY_MISSING_ERROR
             return
 
-        formatted = self._format_messages(messages)
+        formatted = self._format_messages(messages, crm_context)
         models = _models()
         logger.info("Streaming with %d models. Primary: %s", len(models), models[0])
 

@@ -14,6 +14,8 @@ from .models import Conversation, Message, Category
 from .forms import MessageForm
 from .services.ai_service import AIService, DEFAULT_ERROR, _user_message
 from .services.exceptions import AIAssistantError
+from .services.crm_context_service import CRMContextService
+from .services.crm_action_service import CRMActionService
 from .utils import sanitize_message, truncate_title, generate_title, infer_intent
 
 logger = logging.getLogger(__name__)
@@ -57,14 +59,77 @@ def _common_context(user):
     }
 
 
+def _yield_action_result(conversation, message):
+    """Yield SSE events for a CRM action result and persist it."""
+    Message.objects.create(
+        conversation=conversation, role='assistant', content=message
+    )
+    yield f'data: {json.dumps({"t": message})}\n\n'
+    yield f'data: {json.dumps({"done": True})}\n\n'
+
+
 def _event_stream(conversation):
     """Yield SSE events for an AI streamed response, saving the result."""
     full_content = ''
     saved = False
     try:
         history = list(conversation.messages.all())
+        last_msg = history[-1] if history else None
+
+        # ── CRM Action Detection ──
+        if last_msg and last_msg.role == 'user':
+            action_svc = CRMActionService(conversation.user)
+            conv_pk = conversation.pk
+            content = last_msg.content.strip()
+
+            # Check for pending confirmation
+            pending = action_svc.get_pending(conv_pk)
+            if pending:
+                if action_svc.is_confirmation(content):
+                    result = action_svc.execute_pending(conv_pk)
+                    yield from _yield_action_result(
+                        conversation, result['message'],
+                    )
+                    return
+                elif action_svc.is_denial(content):
+                    action_svc.clear_pending(conv_pk)
+                    yield from _yield_action_result(
+                        conversation,
+                        'OK, I\'ve cancelled that operation. '
+                        'What would you like to do instead?',
+                    )
+                    return
+                else:
+                    action_svc.clear_pending(conv_pk)
+
+            # Detect and execute new CRM actions
+            if action_svc.has_action_keywords(content):
+                parsed = action_svc.parse_action(content)
+                if parsed:
+                    result = action_svc.execute(parsed, conv_pk)
+                    yield from _yield_action_result(
+                        conversation, result['message'],
+                    )
+                    return
+
+        # ── CRM Intelligence / General AI ──
+        crm_context = None
+        if last_msg and last_msg.role == 'user':
+            crm = CRMContextService(conversation.user)
+            if crm.is_crm_query(last_msg.content):
+                crm_context = crm.get_context()
+                logger.info(
+                    'CRM AI request | user=%s conv=%s',
+                    conversation.user, conversation.pk,
+                )
+            else:
+                logger.info(
+                    'General AI request | user=%s conv=%s',
+                    conversation.user, conversation.pk,
+                )
+
         service = AIService()
-        for token in service.generate_stream(history):
+        for token in service.generate_stream(history, crm_context=crm_context):
             full_content += token
             yield f'data: {json.dumps({"t": token})}\n\n'
 
@@ -231,7 +296,24 @@ class ChatMessageView(LoginRequiredMixin, View):
         try:
             service = AIService()
             history = list(conversation.messages.all())
-            reply = service.generate_response(history)
+
+            crm_context = None
+            last_msg = history[-1] if history else None
+            if last_msg and last_msg.role == 'user':
+                crm = CRMContextService(request.user)
+                if crm.is_crm_query(last_msg.content):
+                    crm_context = crm.get_context()
+                    logger.info(
+                        'CRM AI request | user=%s conv=%s (non-stream)',
+                        request.user, pk,
+                    )
+                else:
+                    logger.info(
+                        'General AI request | user=%s conv=%s (non-stream)',
+                        request.user, pk,
+                    )
+
+            reply = service.generate_response(history, crm_context=crm_context)
             Message.objects.create(conversation=conversation, role='assistant', content=reply)
             return JsonResponse({'reply': reply, 'conversation_id': conversation.pk})
         except AIAssistantError as e:

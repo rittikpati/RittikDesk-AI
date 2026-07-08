@@ -37,6 +37,14 @@
                 <i class="fas fa-calendar-alt"></i>
                 <span>Calendar</span>
             </a>
+            <a href="{% url 'workflows:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'workflows' %} active{% endif %}">
+                <i class="fas fa-gears"></i>
+                <span>Workflows</span>
+            </a>
+            <a href="{% url 'workflows:notifications' %}" class="dash-nav-item{% if request.resolver_match.url_name == 'notifications' %} active{% endif %}">
+                <i class="fas fa-bell"></i>
+                <span>Notifications</span>
+            </a>
         </div>
 
         <div class="dash-nav-section">

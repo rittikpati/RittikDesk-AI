@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'analytics',
     'tasks',
     'calendars',
+    'workflows',
     'core',
 ]
 

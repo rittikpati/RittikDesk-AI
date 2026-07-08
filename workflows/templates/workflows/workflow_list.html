@@ -1,0 +1,114 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Workflows - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'workflows/css/workflows.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="workflows-header">
+  <h2>Workflows <span class="workflows-count">({{ total_workflows }})</span></h2>
+  <div class="workflows-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="workflowSearch" placeholder="Search workflows..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear">&times;</button>
+    </div>
+    <div class="filter-group">
+      <select id="triggerFilter">
+        <option value="">All Triggers</option>
+        {% for val, label in trigger_choices %}
+        <option value="{{ val }}" {% if active_trigger == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <a href="{% url 'workflows:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+      <i class="fas fa-plus me-1"></i>Create Workflow
+    </a>
+  </div>
+</div>
+
+{% csrf_token %}
+
+<div class="dash-card">
+  {% if workflows %}
+  <div class="table-responsive">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Trigger</th>
+          <th>Status</th>
+          <th>Actions</th>
+          <th>Created</th>
+          <th style="width:140px">Controls</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for wf in workflows %}
+        <tr>
+          <td>
+            <a href="{% url 'workflows:detail' wf.pk %}" class="fw-semibold" style="color:var(--dash-brand);text-decoration:none">{{ wf.name }}</a>
+            {% if wf.description %}<div class="small" style="color:var(--dash-text-sec)">{{ wf.description|truncatechars:60 }}</div>{% endif %}
+          </td>
+          <td><span class="badge" style="background:var(--dash-surface)">{{ wf.get_trigger_type_display }}</span></td>
+          <td>
+            <span class="wf-status wf-status--{% if wf.is_active %}active{% else %}inactive{% endif %}">
+              {{ wf.is_active|yesno:'Active,Inactive' }}
+            </span>
+          </td>
+          <td>{{ wf.actions.count }}</td>
+          <td class="small" style="color:var(--dash-text-sec)">{{ wf.created_at|date:'M d, Y' }}</td>
+          <td>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-light toggle-workflow" data-pk="{{ wf.pk }}" title="Toggle active">
+                <i class="fas {% if wf.is_active %}fa-pause{% else %}fa-play{% endif %}"></i>
+              </button>
+              <a href="{% url 'workflows:update' wf.pk %}" class="btn btn-sm btn-outline-light" title="Edit"><i class="fas fa-pen"></i></a>
+              <a href="{% url 'workflows:delete' wf.pk %}" class="btn btn-sm btn-outline-light" title="Delete"><i class="fas fa-trash"></i></a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center mb-0">
+      {% if page_obj.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if active_trigger %}&trigger={{ active_trigger }}{% endif %}">Previous</a></li>
+      {% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if active_trigger %}&trigger={{ active_trigger }}{% endif %}">Next</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div style="text-align:center;padding:40px 20px">
+    <div style="font-size:3rem;margin-bottom:12px;opacity:0.3"><i class="fas fa-gears"></i></div>
+    <h5>No Workflows Yet</h5>
+    <p style="color:var(--dash-text-sec);max-width:400px;margin:8px auto">
+      Automate your CRM tasks — create a workflow to trigger actions when events happen.
+    </p>
+    <a href="{% url 'workflows:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn mt-2">
+      <i class="fas fa-plus me-1"></i>Create Your First Workflow
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'workflows/js/workflows.js' %}"></script>
+{% endblock %}

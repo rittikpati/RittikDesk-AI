@@ -6,6 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
 from core.mixins import OwnerFilterMixin
+from workflows.services.engine import fire_trigger
 from .models import Task
 from .forms import TaskForm
 
@@ -109,6 +110,7 @@ class TaskCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
+        fire_trigger('task_created', form.instance)
         messages.success(self.request, f'Task "{form.instance.title}" created successfully.')
         return response
 
@@ -136,7 +138,10 @@ class TaskUpdateView(OwnerFilterMixin, UpdateView):
         return kwargs
 
     def form_valid(self, form):
+        old_status = self.get_object().status
         response = super().form_valid(form)
+        if old_status != form.instance.status and form.instance.status == 'completed':
+            fire_trigger('task_completed', form.instance)
         messages.success(self.request, f'Task "{form.instance.title}" updated successfully.')
         return response
 

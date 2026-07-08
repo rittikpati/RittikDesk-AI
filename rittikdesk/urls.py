@@ -20,6 +20,7 @@ urlpatterns = [
     path('analytics/', include('analytics.urls')),
     path('tasks/', include('tasks.urls')),
     path('calendar/', include('calendars.urls')),
+    path('workflows/', include('workflows.urls')),
     path('api/', include('accounts.api_urls')),
 ]
 

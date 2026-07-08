@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.db.models import Q, Prefetch
 from django.utils import timezone
 from core.mixins import OwnerFilterMixin
+from workflows.services.engine import fire_trigger
 from calendars.models import Event
 from calendars.forms import EventForm
 
@@ -99,6 +100,7 @@ class EventCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
+        fire_trigger('meeting_created', form.instance)
         messages.success(self.request, f'Event "{form.instance.title}" created successfully.')
         return response
 
@@ -126,7 +128,10 @@ class EventUpdateView(OwnerFilterMixin, UpdateView):
         return kwargs
 
     def form_valid(self, form):
+        old_status = self.get_object().status
         response = super().form_valid(form)
+        if old_status != form.instance.status and form.instance.status == 'completed':
+            fire_trigger('meeting_finished', form.instance)
         messages.success(self.request, f'Event "{form.instance.title}" updated successfully.')
         return response
 
