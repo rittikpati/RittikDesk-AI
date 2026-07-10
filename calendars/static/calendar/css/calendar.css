@@ -414,3 +414,175 @@
 .calendar-month-event--call { background: #00D9A6; }
 .calendar-month-event--reminder { background: #FFB800; }
 .calendar-month-event--personal { background: #00B4D8; }
+
+/* ── FullCalendar Dark Theme ── */
+#calendar {
+  padding: 12px;
+  min-height: 400px;
+  visibility: hidden;
+}
+.fc {
+  --fc-border-color: rgba(255,255,255,0.08);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgba(255,255,255,0.02);
+  --fc-list-event-hover-bg-color: rgba(255,255,255,0.04);
+  --fc-today-bg-color: rgba(108,99,255,0.06);
+  --fc-event-bg-color: #6C63FF;
+  --fc-event-border-color: #6C63FF;
+  --fc-event-text-color: #fff;
+  --fc-more-link-bg-color: rgba(255,255,255,0.06);
+  --fc-more-link-text-color: var(--dash-text-sec);
+  --fc-button-text-color: var(--dash-text-sec);
+  --fc-button-bg-color: rgba(255,255,255,0.04);
+  --fc-button-border-color: var(--dash-border);
+  --fc-button-hover-bg-color: rgba(255,255,255,0.08);
+  --fc-button-hover-border-color: var(--dash-border-hover);
+  --fc-button-active-bg-color: rgba(108,99,255,0.15);
+  --fc-button-active-border-color: rgba(108,99,255,0.3);
+  color: var(--dash-text);
+}
+.fc .fc-toolbar-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--dash-text);
+}
+.fc .fc-col-header-cell-cushion {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--dash-text-ter);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 0;
+  text-decoration: none;
+}
+.fc .fc-daygrid-day-number {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--dash-text);
+  padding: 4px 6px;
+  text-decoration: none;
+}
+.fc .fc-daygrid-more-link {
+  font-size: 0.65rem;
+  color: var(--dash-text-sec);
+}
+.fc .fc-button {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  color: var(--dash-brand);
+}
+.fc .fc-button .fc-icon {
+  font-size: 0.85rem;
+}
+.fc .fc-button-primary:disabled {
+  opacity: 0.4;
+}
+.fc .fc-day-today .fc-daygrid-day-number {
+  background: var(--dash-brand);
+  color: #fff;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.fc .fc-daygrid-day.fc-day-today {
+  background: transparent;
+}
+.fc .fc-event {
+  border-radius: 3px;
+  font-size: 0.6rem;
+  padding: 1px 4px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  border: none;
+}
+.fc .fc-event:hover {
+  opacity: 0.85;
+}
+.fc .fc-event-title {
+  font-weight: 600;
+  padding: 0;
+}
+.fc .fc-event-time {
+  font-weight: 400;
+  font-size: 0.55rem;
+}
+.fc .fc-popover {
+  background: var(--dash-card-bg);
+  border: 1px solid var(--dash-card-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.fc .fc-popover-title {
+  font-size: 0.75rem;
+  color: var(--dash-text);
+}
+.fc .fc-popover-header {
+  background: rgba(255,255,255,0.03);
+  padding: 8px 10px;
+}
+.fc .fc-more-popover .fc-popover-body {
+  padding: 6px;
+}
+.fc .fc-timegrid-slot {
+  height: 40px;
+}
+.fc .fc-timegrid-axis-cushion,
+.fc .fc-timegrid-slot-label-cushion {
+  font-size: 0.65rem;
+  color: var(--dash-text-ter);
+}
+.fc .fc-non-business {
+  background: rgba(255,255,255,0.01);
+}
+.fc .fc-list-day-cushion {
+  background: rgba(255,255,255,0.02);
+}
+.fc .fc-list-day-text,
+.fc .fc-list-day-side-text {
+  color: var(--dash-text);
+  font-weight: 600;
+}
+.fc .fc-list-table td {
+  border-color: var(--fc-border-color);
+}
+.fc .fc-list-event-dot {
+  border-color: var(--dash-brand);
+}
+.fc .fc-scrollgrid {
+  border-color: var(--fc-border-color);
+}
+.fc .fc-scrollgrid-section-header > th {
+  border-color: var(--fc-border-color);
+}
+
+/* FC event type colors */
+.fc-event--meeting {
+  background: #6C63FF !important;
+  border-color: #6C63FF !important;
+}
+.fc-event--call {
+  background: #00D9A6 !important;
+  border-color: #00D9A6 !important;
+}
+.fc-event--reminder {
+  background: #FFB800 !important;
+  border-color: #FFB800 !important;
+  color: #1a1a2e !important;
+}
+.fc-event--reminder .fc-event-title {
+  color: #1a1a2e !important;
+}
+.fc-event--personal {
+  background: #00B4D8 !important;
+  border-color: #00B4D8 !important;
+}

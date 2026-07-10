@@ -6,6 +6,9 @@
 {% block extra_head %}
 {{ block.super }}
 <link href="{% static 'calendar/css/calendar.css' %}" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/main.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.15/main.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.15/main.min.css" rel="stylesheet">
 {% endblock %}
 
 {% block dashboard_content %}
@@ -46,38 +49,7 @@
 
 <div class="dash-card" id="calendarCard">
   {% if active_view == 'month' %}
-  <div class="calendar-month-nav">
-    <a href="?view=month&year={{ prev_year }}&month={{ prev_month }}" class="month-nav-btn"><i class="fas fa-chevron-left"></i></a>
-    <span class="month-nav-label">{{ month_year }}</span>
-    <a href="?view=month&year={{ next_year }}&month={{ next_month }}" class="month-nav-btn"><i class="fas fa-chevron-right"></i></a>
-  </div>
-  <div class="calendar-month-grid">
-    <div class="calendar-month-row calendar-month-header">
-      <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
-    </div>
-    {% for week in calendar_days %}
-    <div class="calendar-month-row">
-      {% for day in week %}
-      <div class="calendar-month-cell{% if day == 0 %} calendar-month-cell--empty{% endif %}{% if day == today.day and month == today.month and year == today.year %} calendar-month-cell--today{% endif %}">
-        {% if day > 0 %}
-        <span class="calendar-month-day">{{ day }}</span>
-        {% with date_obj=month_start|date:'Y-m-d' %}
-        {% endwith %}
-        {% for day_events in events_by_date.items %}
-          {% if day_events.0.day == day and day_events.0.month == month and day_events.0.year == year %}
-            {% for e in day_events.1 %}
-            <a href="{% url 'calendars:detail' e.pk %}" class="calendar-month-event calendar-month-event--{{ e.event_type }}" title="{{ e.title }}{% if e.start_time %} ({{ e.start_time|time:'g:i A' }}){% endif %}">
-              {% if e.start_time %}{{ e.start_time|time:'g:i A' }} {% endif %}{{ e.title|truncatechars:20 }}
-            </a>
-            {% endfor %}
-          {% endif %}
-        {% endfor %}
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
-    {% endfor %}
-  </div>
+  <div id="calendar"></div>
   {% else %}
   {% if events %}
   <div class="dash-table-wrap">
@@ -187,6 +159,9 @@
 
 {% block extra_scripts %}
 {{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.15/index.global.min.js"></script>
 <script>
 (function () {
   function getParams() {
@@ -257,6 +232,58 @@
   });
 
   updateSearchUI();
+
+  // ---- FullCalendar Initialization ----
+  var calendarEl = document.getElementById('calendar');
+  if (calendarEl) {
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+      plugins: [FullCalendar.DayGridPlugin, FullCalendar.TimeGridPlugin],
+      initialView: 'dayGridMonth',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+      },
+      height: 'auto',
+      nowIndicator: true,
+      navLinks: true,
+      editable: false,
+      dayMaxEvents: 3,
+      eventSources: [
+        {
+          url: '{% url "calendars:api_events" %}',
+          method: 'GET',
+          extraParams: function() {
+            return {};
+          },
+          failure: function() {
+            console.error('Calendar: failed to load events');
+          },
+        }
+      ],
+      eventClick: function(info) {
+        if (info.event.url) {
+          window.location.href = info.event.url;
+          return false;
+        }
+      },
+      dateClick: function(info) {
+        var params = new URLSearchParams();
+        params.set('start_date', info.dateStr);
+        window.location.href = '{% url "calendars:create" %}?' + params.toString();
+      },
+      loading: function(isLoading) {
+        if (!isLoading) {
+          var fc = document.querySelector('.fc');
+          if (fc) fc.style.visibility = 'visible';
+        }
+      }
+    });
+
+    calendar.render();
+    var fcEl = document.querySelector('.fc');
+    if (fcEl) fcEl.style.visibility = 'visible';
+  }
 })();
 </script>
 {% endblock %}

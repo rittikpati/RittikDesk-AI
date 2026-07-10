@@ -69,7 +69,7 @@
 
     <div class="detail-section">
       <div class="detail-label">Assigned To</div>
-      <div class="detail-value">{{ lead.assigned_user.get_full_name|default:lead.assigned_user.email|default:'Unassigned' }}</div>
+      <div class="detail-value">{% if lead.assigned_user %}{{ lead.assigned_user.get_full_name|default:lead.assigned_user.email|default:'Unassigned' }}{% else %}Unassigned{% endif %}</div>
     </div>
 
     <div class="detail-section">

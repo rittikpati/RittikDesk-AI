@@ -1,4 +1,4 @@
-/* Workflows */
+/* Workflows header */
 
 .workflows-header {
   display: flex;
@@ -10,15 +10,10 @@
 }
 
 .workflows-header h2 {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   font-weight: 700;
   margin: 0;
-}
-
-.workflows-count {
-  font-weight: 400;
-  font-size: 0.85rem;
-  color: var(--dash-text-sec);
+  letter-spacing: -0.02em;
 }
 
 .workflows-toolbar {
@@ -26,6 +21,108 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.workflows-toolbar .search-box {
+  position: relative;
+  min-width: 220px;
+  max-width: 280px;
+}
+
+.workflows-toolbar .search-box-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--dash-text-ter);
+  font-size: 0.75rem;
+  pointer-events: none;
+  transition: color 0.25s;
+  z-index: 1;
+}
+
+.workflows-toolbar .search-box input {
+  width: 100%;
+  height: 36px;
+  padding: 0 62px 0 34px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  color: var(--dash-text);
+  font-size: 0.78rem;
+  outline: none;
+  transition: all 0.25s ease;
+}
+
+.workflows-toolbar .search-box input::placeholder {
+  color: var(--dash-text-ter);
+}
+
+.workflows-toolbar .search-box input:focus {
+  border-color: rgba(108,99,255,0.3);
+  background: rgba(108,99,255,0.04);
+  box-shadow: 0 0 0 3px rgba(108,99,255,0.06), 0 0 24px rgba(108,99,255,0.04);
+}
+
+.workflows-toolbar .search-box-clear {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: rgba(255,255,255,0.06);
+  border-radius: 50%;
+  color: var(--dash-text-ter);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s;
+  z-index: 1;
+}
+
+.workflows-toolbar .search-box-clear:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--dash-text);
+}
+
+.workflows-toolbar .filter-group select {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  color: var(--dash-text-sec);
+  padding: 5px 28px 5px 10px;
+  font-size: 0.72rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='%238888aa'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color 0.2s, color 0.2s;
+  min-width: 115px;
+}
+
+.workflows-toolbar .filter-group select:hover {
+  border-color: var(--dash-border-hover);
+  color: var(--dash-text);
+}
+
+.workflows-toolbar .filter-group select:focus {
+  border-color: rgba(108,99,255,0.3);
+  box-shadow: 0 0 0 2px rgba(108,99,255,0.06);
+}
+
+.workflows-count {
+  font-size: 0.72rem;
+  color: var(--dash-text-ter);
+  margin-left: 4px;
 }
 
 .wf-status {

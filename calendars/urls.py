@@ -9,4 +9,5 @@ urlpatterns = [
     path('<int:pk>/', views.EventDetailView.as_view(), name='detail'),
     path('<int:pk>/edit/', views.EventUpdateView.as_view(), name='update'),
     path('<int:pk>/delete/', views.EventDeleteView.as_view(), name='delete'),
+    path('api/events/', views.EventJSONView.as_view(), name='api_events'),
 ]

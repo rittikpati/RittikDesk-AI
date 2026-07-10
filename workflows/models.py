@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 TRIGGER_CHOICES = [
     ('contact_created', 'Contact Created'),
+    ('contact_updated', 'Contact Updated'),
     ('lead_created', 'Lead Created'),
     ('lead_updated', 'Lead Updated'),
     ('lead_qualified', 'Lead Status → Qualified'),
@@ -19,6 +20,8 @@ TRIGGER_CHOICES = [
     ('task_overdue', 'Task Overdue'),
     ('meeting_created', 'Meeting Created'),
     ('meeting_finished', 'Meeting Finished'),
+    ('meeting_reminder', 'Meeting Reminder'),
+    ('campaign_created', 'Campaign Created'),
     ('campaign_started', 'Campaign Started'),
     ('campaign_completed', 'Campaign Completed'),
     ('scheduled_daily', 'Scheduled — Daily'),
@@ -39,6 +42,10 @@ ACTION_CHOICES = [
     ('ai_email', 'Generate AI Email'),
     ('ai_followup', 'Generate AI Follow-up'),
     ('create_notification', 'Create Notification'),
+    ('send_notification', 'Send Notification'),
+    ('create_contact', 'Create Contact'),
+    ('create_lead', 'Create Lead'),
+    ('create_calendar_event', 'Create Calendar Event'),
     ('webhook', 'Webhook (Custom)'),
 ]
 

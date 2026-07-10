@@ -2,9 +2,11 @@ import calendar as cal_module
 from datetime import datetime, timedelta
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView, CreateView, DetailView, UpdateView, DeleteView
-from django.urls import reverse_lazy
+from django.views import View
+from django.urls import reverse, reverse_lazy
 from django.contrib import messages
-from django.db.models import Q, Prefetch
+from django.db.models import Q
+from django.http import JsonResponse
 from django.utils import timezone
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
@@ -84,6 +86,38 @@ class EventListView(OwnerFilterMixin, ListView):
         context['month_start'] = month_start
 
         return context
+
+
+class EventJSONView(LoginRequiredMixin, View):
+    def get(self, request):
+        start = request.GET.get('start')
+        end = request.GET.get('end')
+        events = Event.objects.filter(owner=request.user)
+        if start:
+            events = events.filter(start_date__gte=start)
+        if end:
+            events = events.filter(start_date__lte=end)
+        data = []
+        for e in events:
+            if e.start_time:
+                start_dt = f'{e.start_date}T{e.start_time}'
+            else:
+                start_dt = str(e.start_date)
+            data.append({
+                'id': e.pk,
+                'title': e.title,
+                'start': start_dt,
+                'allDay': e.start_time is None,
+                'url': reverse('calendars:detail', args=[e.pk]),
+                'classNames': [f'fc-event--{e.event_type}'],
+                'extendedProps': {
+                    'event_type': e.event_type,
+                    'status': e.status,
+                    'event_type_label': e.get_event_type_display(),
+                    'status_label': e.get_status_display(),
+                },
+            })
+        return JsonResponse(data, safe=False)
 
 
 class EventCreateView(LoginRequiredMixin, CreateView):
