@@ -122,6 +122,7 @@ class ActionLayer:
         'update_lead': r'\blead\b|\bprospect\b|\bdeal\b',
         'update_event': r'\bevent\b|\bmeeting\b|\bappointment\b|' + 
                         r'\blocation\b|\btime\b|\bdate\b|\bstatus\b|\btype\b',
+        'compose_email': r'\bemail\b|\bmail\b|\bcompose\b|\bdraft\b',
         'view_contact': r'\bcontact\b|\bperson\b',
         'view_lead': r'\blead\b|\bprospect\b|\bdeal\b',
         'view_task': r'\btask\b|\bto-?do\b',
@@ -4288,3 +4289,423 @@ class ModifyAnythingAction(BaseAction):
             f'I found {label} **"{obj_name}"**. '
             f'What would you like to change?'
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  compose_email — AI Email Composer
+# ═══════════════════════════════════════════════════════════════════════════
+
+@register
+class ComposeEmailAction(BaseAction):
+    """Detect email-writing intents, extract recipient/purpose, look up
+    Contact model, and use the LLM to generate a professional email draft."""
+
+    action_type = 'compose_email'
+    keywords = frozenset({
+        'write', 'draft', 'compose', 'create', 'send',
+        'email', 'mail', 'follow', 'up',
+    })
+    patterns = [
+        re.compile(r'(?:write|draft|compose|create|send)\s+(?:an?\s+)?(?:email|mail)\b'),
+        re.compile(r'(?:write|draft|compose|create|send)\s+(?:a\s+)?follow[-\s]up'),
+        re.compile(r'email\s+\w+'),
+    ]
+
+    _EMAIL_RE = re.compile(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+')
+
+    def _parse(self, text):
+        params = {'recipient': '', 'subject': '', 'purpose': '', 'email_address': ''}
+        body = text
+
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:write|draft|compose|create|send)\s+'
+            r'(?:an?\s+)?(?:follow[-\s]up\s+)?(?:email|mail)\s+(?:to|for)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        # If still matched the verb-prefix above, try "email <name>"
+        if body == text and re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?email\s+', body, re.IGNORECASE,
+        ):
+            body = re.sub(
+                r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?email\s+',
+                '', body, flags=re.IGNORECASE,
+            ).strip()
+
+        # Extract purpose after "about / regarding / concerning"
+        m = re.search(
+            r'\b(?:about|regarding|concerning)\s+(.+?)$',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            params['purpose'] = m.group(1).strip()
+            body = body[:m.start()].strip()
+        else:
+            # Extract purpose after action verbs (thanking, to discuss, etc.)
+            m = re.search(
+                r'\b(?:thanking|to\s+(?:thank|discuss|follow\s+up|schedule|confirm|update|share|provide|review|go\s+over))\s+(.+?)$',
+                body, flags=re.IGNORECASE,
+            )
+            if m:
+                params['purpose'] = m.group(0).strip()
+                body = body[:m.start()].strip()
+
+        # Detect inline email address
+        m = self._EMAIL_RE.search(body)
+        if m:
+            params['email_address'] = m.group()
+            pre = body[:m.start()].strip().rstrip(' <(')
+            if pre:
+                pre = re.sub(
+                    r'\s+(?:at|@)\s*$', '', pre, flags=re.IGNORECASE,
+                ).strip()
+                params['recipient'] = _extract_title(pre)
+        else:
+            params['recipient'] = _extract_title(body)
+
+        return params
+
+    def _build_prompt(self, recipient_name, email_addr, company, position, purpose, sender_name, sender_email, sender_company):
+        lines = [
+            'You are a professional email writer for a CRM platform.',
+            'Generate ONLY the subject and email body.',
+            'Do NOT include To, From, or signature — those are added by the system.',
+            '',
+            '--- RECIPIENT ---',
+            f'Name: {recipient_name or "Unknown"}',
+        ]
+        if email_addr:
+            lines.append(f'Email: {email_addr}')
+        if company:
+            lines.append(f'Company: {company}')
+        if position:
+            lines.append(f'Position: {position}')
+        if purpose:
+            lines.append(f'Purpose / Topic: {purpose}')
+
+        lines += [
+            '',
+            '--- SENDER (YOU) ---',
+            f'Name: {sender_name}',
+            f'Email: {sender_email}',
+        ]
+        if sender_company:
+            lines.append(f'Company: {sender_company}')
+
+        lines += [
+            '',
+            'Instructions:',
+            '- Write in a professional yet warm tone.',
+            '- Keep the email concise (3-5 sentences).',
+            '- Start the body with "Dear <First Name>," as the salutation.',
+            '- Use proper closing before the system signature.',
+            '- NEVER include "To:", "From:", or a signature block in the body.',
+            '- NEVER use placeholders like [Your Name], Your Name, or [Your Email].',
+            '- If recipient email is not known, address them by name without email.',
+            '',
+            'Respond ONLY with valid JSON (no markdown, no code fences):',
+            '{',
+            '  "subject": "<subject line>",',
+            '  "body": "<email body — salutation + message + closing line only>"',
+            '}',
+        ]
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _strip_reasoning(text):
+        """Strip internal reasoning / chain-of-thought from LLM output."""
+        if not text:
+            return text
+        # Remove blocks wrapped in  think...  tags (standard CoT)
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        # Remove lines that are pure reasoning headers (case-insensitive)
+        reasoning_headers = [
+            r'think\s*:',
+            r'thought\s*:',
+            r'reasoning\s*:',
+            r'analysis\s*:',
+            r'planning\s*:',
+            r'internal\s+notes\s*:',
+        ]
+        pattern = '|'.join(f'(?:{h})' for h in reasoning_headers)
+        text = re.sub(
+            rf'^(?:{pattern}).*$',
+            '', text, flags=re.MULTILINE | re.IGNORECASE,
+        ).strip()
+        # Collapse repeated blank lines left behind
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
+
+    @staticmethod
+    def _post_process_body(body, sender_name, sender_email):
+        if not body:
+            return body
+        # 1 — Replace all known placeholders with actual sender info
+        body = body.replace('[Your Name]', sender_name)
+        body = body.replace('[your name]', sender_name)
+        body = body.replace('[YOUR NAME]', sender_name)
+        body = body.replace('[Your Email]', sender_email or '')
+        body = body.replace('[your email]', sender_email or '')
+        body = body.replace('[YOUR EMAIL]', sender_email or '')
+        body = body.replace('[email address]', sender_email or '')
+        body = body.replace('[Email Address]', sender_email or '')
+        if sender_name:
+            body = body.replace('Your Name', sender_name)
+        if sender_email:
+            body = body.replace('Your Email', sender_email)
+
+        # 2 — Strip any trailing LLM-generated signature (closing phrase +
+        #     optional name/email lines) so the canonical one always wins.
+        body = re.sub(
+            r'(?:\n\s*)?'
+            r'(?:Best\s+regards|Kind\s+regards|Regards|Sincerely|'
+            r'Thanks|Thank\s+you|Warmly|Best|Cheers|'
+            r'Yours\s+truly|Yours\s+sincerely|Respectfully)'
+            r'[,!.]?[ \t]*'
+            r'(?:\n.*)?$',
+            '', body, flags=re.IGNORECASE | re.DOTALL,
+        ).strip()
+
+        # 3 — Append canonical sender signature
+        sig = f'Best regards,\n\n{sender_name}'
+        if sender_email:
+            sig += f'\n{sender_email}'
+        if body:
+            return body + '\n\n' + sig
+        return sig
+
+    def _parse_json_response(self, text):
+        cleaned = text.strip()
+        if cleaned.startswith('```') and '```' in cleaned[3:]:
+            start = cleaned.find('\n') + 1
+            end = cleaned.rfind('```')
+            cleaned = cleaned[start:end].strip()
+        import json
+        try:
+            return json.loads(cleaned)
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    def _find_matching_people(self, name, user):
+        """Search across every CRM module that could reference a person.
+        Returns a list of dicts {source, name, email, company, position}
+        ordered by module priority (structured person data first)."""
+        seen = set()
+        results = []
+
+        def add(source, obj):
+            key = (type(obj).__name__, obj.pk)
+            if key not in seen:
+                seen.add(key)
+                pname = (
+                    obj.full_name
+                    if hasattr(obj, 'full_name')
+                    else obj.lead_name
+                )
+                results.append({
+                    'source': source,
+                    'name': pname,
+                    'email': (obj.email or '').strip(),
+                    'company': (obj.company or '').strip(),
+                    'position': (obj.job_title or '').strip() if hasattr(obj, 'job_title') else '',
+                })
+
+        def add_owner(source, obj):
+            """Extract the owner (User FK) as the person for entity modules."""
+            key = (type(obj).__name__, obj.pk)
+            if key not in seen:
+                seen.add(key)
+                owner = getattr(obj, 'owner', None)
+                if owner:
+                    oname = owner.get_full_name() or owner.username
+                    oemail = (owner.email or '').strip()
+                    results.append({
+                        'source': source,
+                        'name': oname,
+                        'email': oemail,
+                        'company': '',
+                        'position': '',
+                    })
+                # If no owner, skip (no person data to extract)
+
+        def add_linked_person(source, obj, field_name):
+            """Extract a linked Contact or Lead as the person."""
+            related = getattr(obj, field_name, None)
+            if related:
+                key = (type(related).__name__, related.pk)
+                if key not in seen:
+                    seen.add(key)
+                    pname = (
+                        related.full_name
+                        if hasattr(related, 'full_name')
+                        else getattr(related, 'lead_name', str(related))
+                    )
+                    results.append({
+                        'source': source,
+                        'name': pname,
+                        'email': (getattr(related, 'email', '') or '').strip(),
+                        'company': (getattr(related, 'company', '') or '').strip(),
+                        'position': (getattr(related, 'job_title', '') or '').strip(),
+                    })
+
+        from contacts.models import Contact
+        from leads.models import Lead
+        from calendars.models import Event
+        from tasks.models import Task
+        from campaigns.models import Campaign
+        from workflows.models import Workflow, Notification
+
+        # ── 1. Contacts (structured person data) ──
+        for c in user.contacts.filter(full_name__icontains=name):
+            add('Contact', c)
+
+        # ── 2. Leads (structured person data) ──
+        for l in user.leads.filter(lead_name__icontains=name):
+            add('Lead', l)
+        for l in user.leads.filter(contact_person__icontains=name):
+            add('Lead', l)
+
+        # ── 3. Events → linked Contact / Lead / Owner ──
+        for e in user.events.filter(
+            contact__full_name__icontains=name,
+        ).select_related('contact'):
+            add_linked_person('Event', e, 'contact')
+        for e in user.events.filter(
+            lead__lead_name__icontains=name,
+        ).select_related('lead'):
+            add_linked_person('Event', e, 'lead')
+        for e in user.events.filter(title__icontains=name).select_related('owner'):
+            add_owner('Event', e)
+
+        # ── 4. Tasks → linked Contact / Lead / Owner ──
+        for t in user.tasks.filter(
+            contact__full_name__icontains=name,
+        ).select_related('contact'):
+            add_linked_person('Task', t, 'contact')
+        for t in user.tasks.filter(
+            lead__lead_name__icontains=name,
+        ).select_related('lead'):
+            add_linked_person('Task', t, 'lead')
+        for t in user.tasks.filter(title__icontains=name).select_related('owner'):
+            add_owner('Task', t)
+
+        # ── 5. Campaigns ──
+        for c in user.campaigns.filter(name__icontains=name).select_related('owner'):
+            add_owner('Campaign', c)
+        for c in user.campaigns.filter(subject__icontains=name).select_related('owner'):
+            add_owner('Campaign', c)
+
+        # ── 6. Workflows ──
+        for w in user.workflows.filter(name__icontains=name).select_related('owner'):
+            add_owner('Workflow', w)
+        for w in user.workflows.filter(description__icontains=name).select_related('owner'):
+            add_owner('Workflow', w)
+
+        # ── 7. Notifications ──
+        for n in user.notifications.filter(title__icontains=name).select_related('owner'):
+            add_owner('Notification', n)
+        for n in user.notifications.filter(message__icontains=name).select_related('owner'):
+            add_owner('Notification', n)
+
+        return results
+
+    def execute(self, text, user):
+        if not user or not user.is_authenticated:
+            return None
+
+        params = self._parse(text)
+        recipient_name = params.get('recipient', '').strip()
+        email_addr = params.get('email_address', '').strip() or None
+        purpose = params.get('purpose', '').strip()
+
+        if email_addr:
+            # Direct email provided — skip CRM module search
+            if not recipient_name:
+                recipient_name = email_addr.split('@')[0]
+            company_name = None
+        else:
+            if not recipient_name:
+                return (
+                    'Who would you like to send the email to? '
+                    'Please provide a recipient name or email address.'
+                )
+
+            # Search across CRM modules
+            people = self._find_matching_people(recipient_name, user)
+
+            if not people:
+                return (
+                    "I couldn't find this person in your CRM.\n\n"
+                    'Please provide an email address.'
+                )
+
+            if len(people) > 1:
+                lines = [
+                    f'I found multiple people matching **"{recipient_name}"**:',
+                    '',
+                ]
+                for idx, p in enumerate(people, 1):
+                    lines.append(f'{idx}.')
+                    lines.append(p['name'])
+                    lines.append(f'({p["source"]})')
+                    if p['email']:
+                        lines.append(p['email'])
+                    lines.append('')
+                lines.append('Which one would you like to email? Please specify.')
+                return '\n'.join(lines)
+
+            person = people[0]
+            recipient_name = person['name']
+            email_addr = person['email'] or None
+            company_name = person['company'] or None
+            position_name = person.get('position') or None
+
+        # Retrieve logged-in sender info
+        sender_name = user.get_full_name() or user.username
+        sender_email = user.email or ''
+        sender_company = (getattr(user, 'company', None) or '').strip() or None
+
+        # Build prompt and call LLM
+        prompt = self._build_prompt(
+            recipient_name, email_addr, company_name, position_name, purpose,
+            sender_name, sender_email, sender_company,
+        )
+
+        from assistant.services.ai_service import AIService
+        from assistant.services.ai_crm_service import MockMessage
+        ai = AIService()
+        raw = ai.generate_response([MockMessage('user', prompt)])
+
+        # Strip any internal reasoning / chain-of-thought before display
+        raw = self._strip_reasoning(raw)
+
+        # Parse JSON or fall back to raw text
+        result = self._parse_json_response(raw)
+        if result:
+            subject = result.get('subject', '').strip()
+            body = result.get('body', '').strip()
+        else:
+            subject = ''
+            body = raw.strip()
+
+        # Replace any hallucinated placeholders with real sender info
+        body = self._post_process_body(body, sender_name, sender_email)
+
+        to_lines = ['To:']
+        if email_addr:
+            to_lines.append(f'{recipient_name} <{email_addr}>')
+        else:
+            to_lines.append(recipient_name)
+
+        from_lines = ['From:']
+        from_lines.append(f'{sender_name} <{sender_email}>')
+
+        lines = ['\n'.join(to_lines), '', '\n'.join(from_lines), '']
+        if subject:
+            lines.append(f'Subject:\n{subject}')
+            lines.append('')
+        lines.append('Body:')
+        lines.append('')
+        lines.append(body)
+        return '\n'.join(lines)

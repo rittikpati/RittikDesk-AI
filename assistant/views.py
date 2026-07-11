@@ -24,6 +24,23 @@ logger = logging.getLogger(__name__)
 MAX_PINNED = 5
 
 
+def _replace_sender_placeholders(text, user):
+    """Replace [Your Name] / [Your Email] placeholders with the
+    authenticated user's actual name and email from the login session."""
+    if not text:
+        return text
+    sender_name = user.get_full_name() or user.username
+    sender_email = user.email or ''
+    for variant in ('[Your Name]', '[your name]', '[YOUR NAME]'):
+        text = text.replace(variant, sender_name)
+    text = text.replace('Your Name', sender_name)
+    for variant in ('[Your Email]', '[your email]', '[YOUR EMAIL]',
+                    '[email address]', '[Email Address]'):
+        text = text.replace(variant, sender_email)
+    text = text.replace('Your Email', sender_email)
+    return text
+
+
 def _common_context(user):
     conversations = Conversation.objects.filter(user=user).prefetch_related('messages')
     pinned = conversations.filter(pinned=True)
@@ -62,6 +79,7 @@ def _common_context(user):
 
 def _yield_action_result(conversation, message):
     """Yield SSE events for a CRM action result and persist it."""
+    message = _replace_sender_placeholders(message, conversation.user)
     Message.objects.create(
         conversation=conversation, role='assistant', content=message
     )
@@ -111,7 +129,18 @@ def _event_stream(conversation):
         service = AIService()
         for token in service.generate_stream(history, crm_context=crm_context):
             full_content += token
-            yield f'data: {json.dumps({"t": token})}\n\n'
+
+        # Replace placeholders BEFORE yielding so the user never sees them
+        full_content = _replace_sender_placeholders(full_content, conversation.user)
+
+        # Yield corrected content in small chunks for streaming feel
+        CHUNK_SIZE = 10
+        words = full_content.split(' ')
+        chunks = []
+        for i in range(0, len(words), CHUNK_SIZE):
+            chunks.append(' '.join(words[i:i + CHUNK_SIZE]))
+        for chunk in chunks:
+            yield f'data: {json.dumps({"t": chunk})}\n\n'
 
         Message.objects.create(
             conversation=conversation, role='assistant', content=full_content
@@ -306,6 +335,7 @@ class ChatMessageView(LoginRequiredMixin, View):
                     )
 
             reply = service.generate_response(history, crm_context=crm_context)
+            reply = _replace_sender_placeholders(reply, request.user)
             Message.objects.create(conversation=conversation, role='assistant', content=reply)
             return JsonResponse({'reply': reply, 'conversation_id': conversation.pk})
         except AIAssistantError as e:
