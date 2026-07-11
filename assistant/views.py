@@ -87,7 +87,7 @@ def _yield_action_result(conversation, message):
     yield f'data: {json.dumps({"done": True})}\n\n'
 
 
-def _event_stream(conversation):
+def _event_stream(conversation, request=None):
     """Yield SSE events for an AI streamed response, saving the result."""
     full_content = ''
     saved = False
@@ -97,7 +97,7 @@ def _event_stream(conversation):
 
         # ── CRM Action Detection (placeholder mode) ──
         if last_msg and last_msg.role == 'user':
-            result = ActionLayer.handle(last_msg.content, conversation.user)
+            result = ActionLayer.handle(last_msg.content, conversation.user, request=request)
             if result:
                 yield from _yield_action_result(conversation, result)
                 return
@@ -356,7 +356,7 @@ class ChatMessageStreamView(LoginRequiredMixin, View):
             content = sanitize_message(form.cleaned_data['message'])
             _prepare_user_message(conversation, content)
 
-        return _streaming_response(lambda: _event_stream(conversation))
+        return _streaming_response(lambda: _event_stream(conversation, request=request))
 
 
 class ChatEditMessageView(LoginRequiredMixin, View):
@@ -377,7 +377,7 @@ class ChatEditMessageView(LoginRequiredMixin, View):
             conversation.title = generate_title(content)
             conversation.save(update_fields=['title'])
 
-        return _streaming_response(lambda: _event_stream(conversation))
+        return _streaming_response(lambda: _event_stream(conversation, request=request))
 
 
 class ChatPinToggleView(LoginRequiredMixin, View):
@@ -449,3 +449,50 @@ class ConversationMoveCategoryView(LoginRequiredMixin, View):
             conversation.category = None
         conversation.save(update_fields=['category'])
         return JsonResponse({'success': True})
+
+
+class ReportDownloadView(LoginRequiredMixin, View):
+    """Serve a generated report file as a download (Content-Disposition:
+    attachment) so the browser downloads it instead of opening it inline.
+
+    URL: /assistant/report/download/?path=user_<id>/<filename>
+    Only the owning user may download their own reports.
+    """
+
+    http_method_names = ['get']
+
+    def get(self, request):
+        import os
+        from django.conf import settings
+        from django.http import FileResponse
+
+        relative_path = request.GET.get('path', '').strip()
+        if not relative_path:
+            return JsonResponse({'error': 'Missing path parameter.'}, status=400)
+
+        # Security: verify the path belongs to this user
+        expected_prefix = f'user_{request.user.pk}/'
+        if not relative_path.startswith(expected_prefix):
+            return JsonResponse({'error': 'Access denied.'}, status=403)
+
+        # Build the absolute file path
+        full_path = os.path.normpath(
+            os.path.join(settings.MEDIA_ROOT, 'reports', relative_path)
+        )
+        reports_dir = os.path.normpath(
+            os.path.join(settings.MEDIA_ROOT, 'reports')
+        )
+        # Ensure the file is still inside media/reports/ (path traversal check)
+        if not full_path.startswith(reports_dir):
+            return JsonResponse({'error': 'Access denied.'}, status=403)
+
+        if not os.path.isfile(full_path):
+            return JsonResponse({'error': 'File not found.'}, status=404)
+
+        filename = os.path.basename(full_path)
+        response = FileResponse(
+            open(full_path, 'rb'),
+            as_attachment=True,
+            filename=filename,
+        )
+        return response

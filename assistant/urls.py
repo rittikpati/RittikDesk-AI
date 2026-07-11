@@ -25,4 +25,5 @@ urlpatterns = [
     path('ai/lead/<int:pk>/followup/', ai_views.FollowUpSuggestionsView.as_view(), name='ai_lead_followup'),
     path('ai/insights/', ai_views.CRMInsightsView.as_view(), name='ai_crm_insights'),
     path('ai/recommendations/', ai_views.DailyRecommendationsView.as_view(), name='ai_daily_recommendations'),
+    path('report/download/', views.ReportDownloadView.as_view(), name='report_download'),
 ]

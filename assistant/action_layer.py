@@ -9,6 +9,7 @@ If none match, the message passes through to the existing AI flow.
 import logging
 import re
 from datetime import date, timedelta
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +129,13 @@ class ActionLayer:
         'view_task': r'\btask\b|\bto-?do\b',
         'view_event': r'\bevent\b|\bmeeting\b|\bappointment\b',
         'analytics': r'\bhow\s+many\b|\bcount\b|\btotal\b|\bnumber\s+of\b|\bhow\s+much\b|\brevenue\b',
+        'crm_insights': r'\bsummary\b|\binsight\b|\bpriorit|\brecommend|\burgen|\boverdue\b|\bfocus\b|\bwhat\s+should\b|\bhow\s+is\b',
+        'smart_actions': r'\b(?:meeting|meet|follow.?up|prepare|launch|notify|when|remind|and\s+(?:then|also|create|schedule|notify))\b',
+        'crm_reports': r'\b(?:export|report|download|generate|print|summary\s+report|sales\s+report)\b',
     }
 
     @staticmethod
-    def handle(text, user=None):
+    def handle(text, user=None, request=None):
         if not text or not text.strip():
             return None
         text_lower = text.lower().strip()
@@ -142,6 +146,12 @@ class ActionLayer:
 
         if not matched:
             return ActionLayer._fallback_search(text, user)
+
+        # Attach request to the chosen action so it can build absolute URLs
+        def _dispatch(action):
+            if request is not None:
+                action._current_request = request
+            return action.execute(text, user)
 
         if len(matched) > 1:
             best = None
@@ -158,14 +168,14 @@ class ActionLayer:
                     'Action detected: %s | user=%s msg=%s',
                     best.action_type, user, text[:80],
                 )
-                return best.execute(text, user)
+                return _dispatch(best)
 
         action = matched[0]
         logger.info(
             'Action detected: %s | user=%s msg=%s',
             action.action_type, user, text[:80],
         )
-        return action.execute(text, user)
+        return _dispatch(action)
 
     @staticmethod
     def _fallback_search(text, user):
@@ -5050,3 +5060,1575 @@ class AnalyticsAction(BaseAction):
             return self._help_message()
 
         return self._format_response(entity, count, status, priority, time_key)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  crm_insights — CRM Insights & Recommendations
+# ═══════════════════════════════════════════════════════════════════════════
+
+@register
+class CrmInsightsAction(BaseAction):
+    """Analyse CRM data and provide intelligent business insights,
+    today's priorities, CRM summary, and actionable recommendations.
+
+    Uses Django ORM for all data collection; only uses the LLM to
+    generate human-friendly recommendation text from real CRM data.
+    """
+
+    action_type = 'crm_insights'
+    keywords = frozenset({
+        'summary', 'insights', 'priorities', 'recommendations',
+        'focus', 'urgent', 'overdue', 'pending', 'follow up',
+        'what should', 'how is my', 'what to do',
+        'business insights', 'summarize',
+    })
+    patterns = [
+        re.compile(r'(?:summarize|summary|overview)\s+(?:my\s+)?crm'),
+        re.compile(r'(?:insight|how\s+(?:is|are)\s+(?:my|the)|business)'),
+        re.compile(r'(?:priorit|recommend|focus|what\s+should)'),
+        re.compile(r'(?:urgent|overdue|pending|follow\s+up)'),
+        re.compile(r'(?:today\'?s?\s+(?:priorit|agenda|plan|task))'),
+        re.compile(r'(?:any\s+(?:urgent|pending|follow))'),
+    ]
+
+    # ── Intent detection ──
+
+    _SUMMARY_RE = re.compile(r'\b(summarize|summary|overview)\b', re.IGNORECASE)
+    _TODAY_RE = re.compile(
+        r'\b(today|priority|priorities|agenda|urgent|overdue|pending|follow\s+up|what\s+should\s+i\s+do)\b',
+        re.IGNORECASE,
+    )
+    _RECOMMEND_RE = re.compile(
+        r'\b(recommend|recommendations?|focus\s+on|what\s+to\s+do|what\s+should\s+i\s+focus)\b',
+        re.IGNORECASE,
+    )
+
+    # ── CRM data collection ──
+
+    @staticmethod
+    def _collect_crm_data(user):
+        """Gather counts and items from every CRM module via ORM."""
+        from datetime import date, timedelta
+        today = date.today()
+        data = {}
+
+        # ── Contacts ──
+        data['contacts_total'] = user.contacts.count()
+
+        # ── Leads ──
+        leads = user.leads.all()
+        data['leads_total'] = leads.count()
+        data['leads_high_priority'] = leads.filter(priority__in=['High', 'Urgent']).count()
+        data['leads_new'] = leads.filter(status='New').count()
+        data['leads_inactive'] = leads.filter(status__in=['Won', 'Lost']).count()
+        data['leads_high_priority_list'] = list(
+            leads.filter(priority__in=['High', 'Urgent']).values('lead_name', 'email')[:5]
+        )
+
+        # ── Tasks ──
+        tasks = user.tasks.all()
+        data['tasks_total'] = tasks.count()
+        data['tasks_overdue'] = tasks.filter(
+            due_date__lt=today,
+        ).exclude(status='completed').count()
+        data['tasks_due_today'] = tasks.filter(
+            due_date=today,
+        ).exclude(status='completed').count()
+        data['tasks_pending'] = tasks.filter(status='pending').count()
+        data['tasks_completed'] = tasks.filter(status='completed').count()
+        data['tasks_overdue_list'] = list(
+            tasks.filter(due_date__lt=today).exclude(status='completed').values('title', 'due_date')[:5]
+        )
+        data['tasks_due_today_list'] = list(
+            tasks.filter(due_date=today).exclude(status='completed').values('title')[:5]
+        )
+
+        # ── Events / Meetings ──
+        events = user.events.all()
+        data['meetings_today'] = events.filter(
+            start_date=today, event_type='meeting', status='scheduled',
+        ).count()
+        data['meetings_tomorrow'] = events.filter(
+            start_date=today + timedelta(days=1), event_type='meeting', status='scheduled',
+        ).count()
+        data['events_upcoming'] = events.filter(
+            start_date__gte=today, status='scheduled',
+        ).count()
+        data['meetings_today_list'] = list(
+            events.filter(start_date=today, event_type='meeting', status='scheduled')
+            .values('title', 'start_time', 'location')[:5]
+        )
+        data['meetings_tomorrow_list'] = list(
+            events.filter(start_date=today + timedelta(days=1), event_type='meeting', status='scheduled')
+            .values('title', 'start_time', 'location')[:5]
+        )
+        data['upcoming_events_list'] = list(
+            events.filter(start_date__gte=today, status='scheduled')
+            .order_by('start_date', 'start_time')
+            .values('title', 'start_date', 'start_time')[:5]
+        )
+
+        # ── Campaigns ──
+        campaigns = user.campaigns.all()
+        data['campaigns_total'] = campaigns.count()
+        data['campaigns_draft'] = campaigns.filter(status='Draft').count()
+        data['campaigns_scheduled'] = campaigns.filter(status='Scheduled').count()
+        data['campaigns_sent'] = campaigns.filter(status='Sent').count()
+        data['campaigns_draft_list'] = list(
+            campaigns.filter(status='Draft').values('name')[:5]
+        )
+        data['campaigns_scheduled_list'] = list(
+            campaigns.filter(status='Scheduled').values('name', 'scheduled_at')[:5]
+        )
+
+        # ── Workflows ──
+        workflows = user.workflows.all()
+        data['workflows_total'] = workflows.count()
+        data['workflows_active'] = workflows.filter(is_active=True).count()
+        data['workflows_inactive'] = workflows.filter(is_active=False).count()
+
+        # ── Notifications ──
+        data['notifications_total'] = user.notifications.count()
+        data['notifications_unread'] = user.notifications.filter(is_read=False).count()
+
+        return data
+
+    # ── Response builders ──
+
+    @staticmethod
+    def _build_summary(data):
+        lines = ['# CRM Summary', '']
+
+        lines.append('## Contacts')
+        lines.append(f'- Total: **{data["contacts_total"]}**')
+        lines.append('')
+
+        lines.append('## Leads')
+        lines.append(f'- Total: **{data["leads_total"]}**')
+        lines.append(f'- High Priority: **{data["leads_high_priority"]}**')
+        lines.append('')
+
+        lines.append('## Tasks')
+        lines.append(f'- Total: **{data["tasks_total"]}**')
+        lines.append(f'- Overdue: **{data["tasks_overdue"]}**')
+        lines.append(f'- Due Today: **{data["tasks_due_today"]}**')
+        lines.append('')
+
+        lines.append('## Meetings')
+        lines.append(f'- Today: **{data["meetings_today"]}**')
+        lines.append(f'- Tomorrow: **{data["meetings_tomorrow"]}**')
+        lines.append(f'- Upcoming: **{data["events_upcoming"]}**')
+        lines.append('')
+
+        lines.append('## Campaigns')
+        lines.append(f'- Total: **{data["campaigns_total"]}**')
+        lines.append(f'- Draft: **{data["campaigns_draft"]}**')
+        lines.append(f'- Scheduled: **{data["campaigns_scheduled"]}**')
+        lines.append('')
+
+        lines.append('## Workflows')
+        lines.append(f'- Active: **{data["workflows_active"]}**')
+        lines.append(f'- Inactive: **{data["workflows_inactive"]}**')
+        lines.append('')
+
+        lines.append('## Notifications')
+        lines.append(f'- Unread: **{data["notifications_unread"]}**')
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _build_today(data):
+        lines = ['# Today\'s Priorities', '']
+        found = False
+
+        if data['tasks_overdue']:
+            found = True
+            lines.append('## Overdue Tasks')
+            for t in data['tasks_overdue_list']:
+                lines.append(f'- {t["title"]} (overdue)')
+            lines.append('')
+
+        if data['tasks_due_today']:
+            found = True
+            lines.append('## Due Today')
+            for t in data['tasks_due_today_list']:
+                lines.append(f'- {t["title"]}')
+            lines.append('')
+
+        if data['meetings_today']:
+            found = True
+            lines.append('## Meetings Today')
+            for m in data['meetings_today_list']:
+                time_str = f' at {m["start_time"]}' if m['start_time'] else ''
+                loc_str = f' — {m["location"]}' if m['location'] else ''
+                lines.append(f'- {m["title"]}{time_str}{loc_str}')
+            lines.append('')
+
+        if data['leads_high_priority']:
+            found = True
+            lines.append('## High-Priority Leads')
+            for l in data['leads_high_priority_list']:
+                lines.append(f'- {l["lead_name"]} ({l["email"] or "no email"})')
+            lines.append('')
+
+        if data['campaigns_draft']:
+            found = True
+            lines.append('## Draft Campaigns')
+            for c in data['campaigns_draft_list']:
+                lines.append(f'- {c["name"]} — ready to review')
+            lines.append('')
+
+        if not found:
+            lines.append('Nothing urgent needs your attention right now.')
+            lines.append('')
+
+        # Add quick recommendations based on ORM data
+        lines.append('## Quick Recommendations')
+        recommendations = []
+
+        if data['tasks_overdue']:
+            recommendations.append(f'Complete {data["tasks_overdue"]} overdue task(s) first.')
+        if data['leads_high_priority']:
+            recommendations.append(f'Follow up with {data["leads_high_priority"]} high-priority lead(s).')
+        if data['meetings_tomorrow']:
+            recommendations.append(f'Prepare for {data["meetings_tomorrow"]} meeting(s) tomorrow.')
+        if data['campaigns_draft']:
+            recommendations.append(f'Review and launch {data["campaigns_draft"]} draft campaign(s).')
+        if data['notifications_unread']:
+            recommendations.append(f'Check {data["notifications_unread"]} unread notification(s).')
+
+        if recommendations:
+            for i, r in enumerate(recommendations, 1):
+                lines.append(f'{i}. {r}')
+        else:
+            lines.append('Everything looks up to date. Keep up the good work!')
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _build_insights(data):
+        lines = ['# CRM Insights', '']
+
+        # Overall health
+        total_items = (
+            data['contacts_total'] + data['leads_total'] + data['tasks_total']
+            + data['campaigns_total'] + data['workflows_total']
+        )
+        issues = []
+
+        if data['tasks_overdue']:
+            issues.append(f'{data["tasks_overdue"]} overdue tasks')
+        if data['leads_high_priority'] and data['leads_high_priority'] > 2:
+            issues.append(f'{data["leads_high_priority"]} high-priority leads requiring attention')
+        if data['campaigns_draft']:
+            issues.append(f'{data["campaigns_draft"]} draft campaigns not yet launched')
+        if data['notifications_unread']:
+            issues.append(f'{data["notifications_unread"]} unread notifications')
+
+        if issues:
+            lines.append('## Areas Needing Attention')
+            for issue in issues:
+                lines.append(f'- {issue.capitalize()}')
+            lines.append('')
+
+        lines.append('## At a Glance')
+        lines.append(f'- **{data["contacts_total"]}** contacts in your CRM')
+        lines.append(f'- **{data["leads_total"]}** leads ({data["leads_high_priority"]} high priority)')
+        lines.append(f'- **{data["tasks_total"]}** tasks ({data["tasks_pending"]} pending, {data["tasks_completed"]} completed)')
+        lines.append(f'- **{data["events_upcoming"]}** upcoming events')
+        lines.append(f'- **{data["campaigns_total"]}** campaigns ({data["campaigns_draft"]} draft, {data["campaigns_scheduled"]} scheduled)')
+        lines.append(f'- **{data["workflows_active"]}** active workflows')
+        lines.append(f'- **{data["notifications_unread"]}** unread notifications')
+        lines.append('')
+
+        # Quick wins
+        wins = []
+        if data['meetings_today']:
+            wins.append(f'You have {data["meetings_today"]} meeting(s) today — be prepared.')
+        if data['tasks_due_today']:
+            wins.append(f'{data["tasks_due_today"]} task(s) due today — tackle them first.')
+        if data['campaigns_scheduled']:
+            wins.append(f'{data["campaigns_scheduled"]} campaign(s) scheduled — ready to go.')
+        if data['workflows_active']:
+            wins.append(f'{data["workflows_active"]} workflow(s) running — your automation is on track.')
+
+        if wins:
+            lines.append('## Quick Wins')
+            for w in wins:
+                lines.append(f'- {w}')
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _build_recommendations(data, user):
+        """Use ORM data to build a prompt, then call the LLM for human-friendly
+        recommendations."""
+        prompt_lines = [
+            'You are an experienced Sales Manager and CRM Consultant.',
+            'Based on the CRM data below, provide 3-5 specific, actionable',
+            'recommendations. Be concise and direct. Use bullet points.',
+            '',
+            '--- CRM DATA ---',
+            f'Contacts: {data["contacts_total"]}',
+            f'Leads: {data["leads_total"]} ({data["leads_high_priority"]} high priority, {data["leads_new"]} new)',
+            f'Tasks: {data["tasks_total"]} ({data["tasks_overdue"]} overdue, {data["tasks_due_today"]} due today, {data["tasks_pending"]} pending)',
+            f'Meetings Today: {data["meetings_today"]}',
+            f'Meetings Tomorrow: {data["meetings_tomorrow"]}',
+            f'Upcoming Events: {data["events_upcoming"]}',
+            f'Campaigns: {data["campaigns_total"]} ({data["campaigns_draft"]} draft, {data["campaigns_scheduled"]} scheduled)',
+            f'Workflows: {data["workflows_total"]} ({data["workflows_active"]} active)',
+            f'Notifications: {data["notifications_total"]} ({data["notifications_unread"]} unread)',
+            '',
+            'Recommendations:',
+        ]
+
+        if data['tasks_overdue_list']:
+            prompt_lines.append('Overdue tasks:')
+            for t in data['tasks_overdue_list']:
+                prompt_lines.append(f'  - {t["title"]}')
+            prompt_lines.append('')
+
+        if data['tasks_due_today_list']:
+            prompt_lines.append('Tasks due today:')
+            for t in data['tasks_due_today_list']:
+                prompt_lines.append(f'  - {t["title"]}')
+            prompt_lines.append('')
+
+        if data['meetings_today_list']:
+            prompt_lines.append('Meetings today:')
+            for m in data['meetings_today_list']:
+                prompt_lines.append(f'  - {m["title"]}')
+            prompt_lines.append('')
+
+        prompt = '\n'.join(prompt_lines)
+
+        from assistant.services.ai_service import AIService
+        from assistant.services.ai_crm_service import MockMessage
+        ai = AIService()
+        raw = ai.generate_response([MockMessage('user', prompt)])
+        return raw.strip() or 'No recommendations could be generated.'
+
+    # ── Intent routing ──
+
+    @staticmethod
+    def _detect_intent(text_lower):
+        if CrmInsightsAction._SUMMARY_RE.search(text_lower):
+            return 'summary'
+        if CrmInsightsAction._RECOMMEND_RE.search(text_lower):
+            return 'recommendations'
+        if CrmInsightsAction._TODAY_RE.search(text_lower):
+            return 'today'
+        return 'insights'
+
+    # ── Entry point ──
+
+    def execute(self, text, user):
+        if not user or not user.is_authenticated:
+            return None
+
+        text_lower = text.lower()
+        data = self._collect_crm_data(user)
+        intent = self._detect_intent(text_lower)
+
+        if intent == 'summary':
+            return self._build_summary(data)
+        elif intent == 'today':
+            return self._build_today(data)
+        elif intent == 'recommendations':
+            return self._build_recommendations(data, user)
+        else:
+            return self._build_insights(data)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  smart_actions — AI Automation & Smart Actions
+# ═══════════════════════════════════════════════════════════════════════════
+
+@register
+class SmartActions(BaseAction):
+    """Execute multiple CRM actions from a single natural language request.
+
+    Detects multi-action intents (meeting with someone, lead + follow-up,
+    meeting prep, workflow creation, campaign launch), parses entities,
+    and runs a pipeline of existing CRUD actions via synthetic text.
+    Returns a piped success summary with smart suggestions.
+    """
+
+    action_type = 'smart_actions'
+    keywords = frozenset({
+        'meeting', 'meet', 'follow up', 'follow-up', 'followup',
+        'prepare', 'launch', 'launches', 'notify', 'when', 'remind',
+        'and', 'then', 'also',
+    })
+    patterns = [
+        re.compile(r'(?:meeting|meet)\s+with\s+\w+'),
+        re.compile(r'(?:create|add|new)\s+.*\b(lead|contact)\b.*\b(?:and|then)\b'),
+        re.compile(r'(?:prepare|ready)\s+for\s+(?:tomorrow|today|the|this)'),
+        re.compile(r'(?:when|if)\s+.*\b(lead|contact|task)\b.*\b(?:created|updated|completed|high)\b'),
+        re.compile(r'(?:launch|create)\s+.*\bcampaign\b.*\b(?:and|notify)\b'),
+        re.compile(r'\band\s+(?:create|schedule|notify|send|then)'),
+        re.compile(r'\bremind\s+me\b.*\b(?:after|when|in)\b'),
+    ]
+
+    # ── Pipeline definitions ──
+    # Each pipeline is a list of dicts:
+    #   label       — short label like "Calendar Event"
+    #   action_cls  — class to instantiate
+    #   build_text  — callable(original_text) -> synthetic text
+    #   check       — optional callable(results_so_far) -> bool (skip if False)
+
+    @staticmethod
+    def _pipeline_meeting(text, user):
+        """Meeting with someone → Event + Notification + suggest Task."""
+        steps = []
+
+        # Extract person name
+        m = re.search(r'(?:meeting|meet)\s+with\s+(\w+(?:\s+\w+)?)', text, re.IGNORECASE)
+        person = m.group(1).strip() if m else 'the contact'
+
+        # Strip "I have a / I've got a / I've a / etc" from the original to
+        # produce clean synthetic text for each sub-action.
+        clean = re.sub(
+            r'^(?:i\s+(?:have|got|have\s+got)\s+a\s+|i\'?v?e?\s+got\s+a\s+)',
+            '', text, flags=re.IGNORECASE,
+        ).strip()
+
+        event_text = clean
+        # If "meeting with X" already present, ensure the target is present
+        # for CreateEventAction's parser
+        if 'schedule' not in event_text.lower() and 'create' not in event_text.lower():
+            event_text = 'schedule ' + event_text
+
+        steps.append({
+            'label': 'Calendar Event',
+            'action_cls': CreateEventAction,
+            'build_text': lambda orig, t=event_text: t,
+        })
+
+        # Build notification text from extracted info
+        notif_title = f'Reminder: Meeting with {person}'
+        notif_text = (
+            f'create a notification titled "{notif_title}" '
+            f'message "Don\'t forget your meeting with {person}."'
+        )
+        steps.append({
+            'label': 'Reminder Notification',
+            'action_cls': CreateNotificationAction,
+            'build_text': lambda orig, n=notif_text: n,
+        })
+
+        suggestion = f"💡 Would you like me to schedule a follow-up task regarding **{person}**?"
+        return steps, suggestion
+
+    @staticmethod
+    def _pipeline_lead_followup(text, user):
+        """Create lead + follow-up task."""
+        # Extract lead name: everything after "lead" prefix and before "and"
+        body = re.sub(
+            r'.*?\b(?:lead|prospect|deal)\s+',
+            '', text, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r'\s+and\s+.*$', '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r'^(?:for|named|called|about)\s+', '', body, flags=re.IGNORECASE,
+        ).strip()
+        lead_name = _extract_title(body) or 'New Lead'
+
+        # Clean original text for lead creation: strip everything after "and"
+        lead_text = re.sub(
+            r'\s+and\s+.*$', '', text, flags=re.IGNORECASE,
+        ).strip()
+        if not re.search(r'\b(?:lead|prospect|deal)\b', lead_text, re.IGNORECASE):
+            lead_text = lead_text + ' lead'
+        # Ensure "create" prefix present
+        if 'create' not in lead_text.lower() and 'add' not in lead_text.lower() and 'new' not in lead_text.lower():
+            lead_text = 'create a ' + lead_text
+
+        steps = [
+            {
+                'label': 'Lead',
+                'action_cls': CreateLeadAction,
+                'build_text': lambda orig, lt=lead_text: lt,
+            },
+            {
+                'label': 'Follow-up Task',
+                'action_cls': CreateTaskAction,
+                'build_text': lambda orig: (
+                    f'create a task: follow up with {lead_name} '
+                    f'priority high'
+                ),
+            },
+        ]
+
+        suggestion = f"💡 Lead **{lead_name}** created. Would you like me to set a reminder to follow up in 3 days?"
+        return steps, suggestion
+
+    @staticmethod
+    def _pipeline_meeting_prep(text, user):
+        """Prepare for tomorrow's meeting → find meeting + create agenda + remind."""
+        notif_text = (
+            'create a notification titled "Prepare for tomorrow\'s meeting" '
+            'message "Get ready for your meeting tomorrow. Review agenda and prepare notes."'
+        )
+
+        steps = [
+            {
+                'label': 'Find Meeting',
+                'action_cls': None,  # handled inline
+                'build_text': None,
+                '_inline_result': None,
+            },
+            {
+                'label': 'Reminder Notification',
+                'action_cls': CreateNotificationAction,
+                'build_text': lambda orig, n=notif_text: n,
+            },
+        ]
+
+        # Inline: find tomorrow's meetings
+        from datetime import date, timedelta
+        tomorrow = date.today() + timedelta(days=1)
+        meetings = list(user.events.filter(
+            start_date=tomorrow, event_type='meeting', status='scheduled',
+        ).values('title', 'start_time', 'location')[:3])
+
+        suggestion = ''
+        if not meetings:
+            meeting_info = "I didn't find any meetings scheduled for tomorrow."
+        else:
+            lines = []
+            for m in meetings:
+                time_str = f' at {m["start_time"]}' if m['start_time'] else ''
+                loc_str = f' — {m["location"]}' if m['location'] else ''
+                lines.append(f'- **{m["title"]}**{time_str}{loc_str}')
+            meeting_info = 'Found tomorrow\'s meetings:\n' + '\n'.join(lines)
+            # Add agenda generation as extra result
+            agenda_items = []
+            for m in meetings:
+                agenda_items.append(f'- {m["title"]}: Discuss agenda, review progress, action items')
+            meeting_info += '\n\nSuggested Agenda:\n' + '\n'.join(agenda_items[:3])
+            suggestion = '💡 Would you like me to send this agenda to attendees?'
+
+        steps[0]['_inline_result'] = meeting_info
+
+        return steps, suggestion
+
+    @staticmethod
+    def _pipeline_workflow(text, user):
+        """When X happens, remind me → create entity + create workflow."""
+        text_lower = text.lower()
+
+        # Detect entity type
+        entity = 'lead'  # default
+        if re.search(r'\bcontact\b', text_lower):
+            entity = 'contact'
+        elif re.search(r'\btask\b', text_lower):
+            entity = 'task'
+        elif re.search(r'\bcampaign\b', text_lower):
+            entity = 'campaign'
+
+        trigger_map = {
+            'lead': 'lead_created',
+            'contact': 'contact_created',
+            'task': 'task_created',
+            'campaign': 'campaign_created',
+        }
+
+        # Extract entity name from text
+        body = re.sub(
+            r'(?:when|if)\s+(?:a\s+|an\s+)?(?:new\s+)?(?:high\s+priority\s+)?'
+            r'(?:lead|contact|task|campaign).*?'
+            r'(?:is\s+)?(?:created|updated|completed)\s*,?\s*',
+            '', text, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(r'\s+remind\s+me\s+.*$', '', body, flags=re.IGNORECASE).strip()
+        entity_name = _extract_title(body) or f'New {entity.title()}'
+
+        steps = []
+        trigger_slug = trigger_map[entity]
+
+        # Create the entity
+        if entity == 'lead':
+            lead_text = f'create a lead named {entity_name} priority high'
+            steps.append({
+                'label': 'Lead',
+                'action_cls': CreateLeadAction,
+                'build_text': lambda orig, lt=lead_text: lt,
+            })
+        elif entity == 'contact':
+            contact_text = f'create a contact named {entity_name}'
+            steps.append({
+                'label': 'Contact',
+                'action_cls': CreateContactAction,
+                'build_text': lambda orig, ct=contact_text: ct,
+            })
+        elif entity == 'task':
+            task_text = f'create a task {entity_name} priority high'
+            steps.append({
+                'label': 'Task',
+                'action_cls': CreateTaskAction,
+                'build_text': lambda orig, tt=task_text: tt,
+            })
+        elif entity == 'campaign':
+            campaign_text = f'create a campaign named {entity_name}'
+            steps.append({
+                'label': 'Campaign',
+                'action_cls': CreateCampaignAction,
+                'build_text': lambda orig, ct=campaign_text: ct,
+            })
+
+        # Create Workflow
+        wf_name = trigger_slug.replace('_', ' ').title() + ' Reminder'
+        wf_text = (
+            f'create a workflow named "{wf_name}" '
+            f'trigger: {trigger_slug} '
+            f'actions: create_notification'
+        )
+        steps.append({
+            'label': 'Workflow',
+            'action_cls': CreateWorkflowAction,
+            'build_text': lambda orig, wt=wf_text: wt,
+        })
+
+        # Create notification
+        notif_text = (
+            f'create a notification titled "Workflow Set Up for {entity_name}" '
+            f'message "Automation created: you will be notified when this {entity} is updated."'
+        )
+        steps.append({
+            'label': 'Notification',
+            'action_cls': CreateNotificationAction,
+            'build_text': lambda orig, nt=notif_text: nt,
+        })
+
+        suggestion = f'The workflow will automatically notify you when this {entity} is updated or created.'
+        return steps, suggestion
+
+    @staticmethod
+    def _pipeline_campaign(text, user):
+        """Launch campaign + notify → create campaign + workflow + notification."""
+        body = re.sub(
+            r'.*?\b(?:campaign)\s+',
+            '', text, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r'\s+and\s+notify\s+me\s+.*$', '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r'^(?:for|named|called|about)\s+', '', body, flags=re.IGNORECASE,
+        ).strip()
+        campaign_name = _extract_title(body) or 'New Campaign'
+
+        # Clean campaign text: strip "and notify me..." part
+        campaign_text = re.sub(
+            r'\s+and\s+notify\s+me\s+.*$', '', text, flags=re.IGNORECASE,
+        ).strip()
+        if 'create' not in campaign_text.lower() and 'launch' not in campaign_text.lower():
+            campaign_text = 'create ' + campaign_text
+        if 'campaign' not in campaign_text.lower():
+            campaign_text = campaign_text + ' campaign'
+
+        wf_text = (
+            'create a workflow named "Campaign Completion Notifier" '
+            'trigger: campaign_completed '
+            'actions: create_notification'
+        )
+        notif_text = (
+            f'create a notification titled "Campaign Launched: {campaign_name}" '
+            f'message "Your campaign has been launched. You will be notified when it completes."'
+        )
+
+        steps = [
+            {
+                'label': 'Campaign',
+                'action_cls': CreateCampaignAction,
+                'build_text': lambda orig, ct=campaign_text: ct,
+            },
+            {
+                'label': 'Workflow',
+                'action_cls': CreateWorkflowAction,
+                'build_text': lambda orig, wt=wf_text: wt,
+            },
+            {
+                'label': 'Notification',
+                'action_cls': CreateNotificationAction,
+                'build_text': lambda orig, nt=notif_text: nt,
+            },
+        ]
+
+        suggestion = f'Campaign **{campaign_name}** is live! I will notify you when it finishes.'
+        return steps, suggestion
+
+    # ── Workflow detection ──
+
+    _WORKFLOW_DETECTORS = [
+        ('meeting_pipeline', lambda t: bool(re.search(r'(?:meeting|meet)\s+with\s+\w+', t, re.IGNORECASE))),
+        ('meeting_prep', lambda t: bool(re.search(r'(?:prepare|ready)\s+for\s+(?:tomorrow|today|\bthe\b|\bthis\b)', t, re.IGNORECASE))),
+        ('lead_followup', lambda t: (
+            bool(re.search(r'(?:create|add|new).*\b(lead|prospect|deal)\b', t, re.IGNORECASE))
+            and bool(re.search(r'\b(?:and|then)\b.*\b(?:follow|schedule|task)\b', t, re.IGNORECASE))
+        )),
+        ('workflow', lambda t: bool(re.search(r'(?:when|if)\s+.*\b(?:lead|contact|task|campaign)\b.*\b(?:created|updated|completed|high)\b', t, re.IGNORECASE))),
+        ('campaign', lambda t: bool(re.search(r'(?:launch|create)\s+.*\bcampaign\b.*\b(?:and|notify)\b', t, re.IGNORECASE))),
+    ]
+
+    @staticmethod
+    def _detect_workflow(text_lower):
+        for name, detector in SmartActions._WORKFLOW_DETECTORS:
+            if detector(text_lower):
+                return name
+        return None
+
+    # ── Pipeline runner ──
+
+    @staticmethod
+    def _run_pipeline(steps, text, user):
+        """Execute a list of steps. Each step calls the action class's
+        execute method with the synthetic text built from *text*."""
+        results = []
+        for step in steps:
+            action_cls = step['action_cls']
+            build_text = step['build_text']
+            inline_result = step.get('_inline_result')
+
+            if action_cls is None and inline_result:
+                results.append((step['label'], True, inline_result))
+                continue
+
+            try:
+                action = action_cls()
+                synthetic = build_text(text)
+                result = action.execute(synthetic, user)
+                results.append((step['label'], True, result))
+            except Exception as e:
+                logger.exception('SmartActions step %s failed', step['label'])
+                results.append((step['label'], False, str(e)))
+
+        return results
+
+    # ── Response formatter ──
+
+    @staticmethod
+    def _format_response(results, suggestion):
+        lines = []
+        for label, success, msg in results:
+            icon = '✅' if success else '❌'
+            lines.append(f'{icon} {label}')
+            if success:
+                # Extract just the first line of the result for brevity
+                first_line = msg.split('\n')[0][:120]
+                lines.append(f'   {first_line}')
+            else:
+                lines.append(f'   Error: {msg[:120]}')
+        lines.append('')
+
+        all_ok = all(success for _, success, _ in results)
+        if all_ok:
+            lines.append('**Everything completed successfully.**')
+        else:
+            lines.append('**Some steps failed. See details above.**')
+
+        if suggestion:
+            lines.append('')
+            lines.append(f'💡 {suggestion}')
+
+        return '\n'.join(lines)
+
+    # ── Entry point ──
+
+    def execute(self, text, user):
+        if not user or not user.is_authenticated:
+            return None
+
+        text_lower = text.lower()
+        wf = self._detect_workflow(text_lower)
+        if wf is None:
+            return None
+
+        pipeline_map = {
+            'meeting_pipeline': self._pipeline_meeting,
+            'lead_followup': self._pipeline_lead_followup,
+            'meeting_prep': self._pipeline_meeting_prep,
+            'workflow': self._pipeline_workflow,
+            'campaign': self._pipeline_campaign,
+        }
+
+        builder = pipeline_map.get(wf)
+        if builder is None:
+            return None
+
+        steps, suggestion = builder(text, user)
+        results = self._run_pipeline(steps, text, user)
+        return self._format_response(results, suggestion)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  crm_reports — AI CRM Reports (CSV / Excel / PDF)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@register
+class CrmReportsAction(BaseAction):
+    """Generate professional CRM reports from natural language.
+
+    Supported formats:
+      - CSV   — lightweight, universally openable
+      - XLSX  — formatted Excel workbook
+      - PDF   — printable report via reportlab
+
+    Entity types: contacts, leads, tasks, events, campaigns,
+    workflows, notifications, summary, full/all.
+    """
+
+    action_type = 'crm_reports'
+    keywords = frozenset({
+        'export', 'report', 'download', 'generate', 'print',
+        'summary', 'sales', 'csv', 'pdf', 'excel', 'xlsx',
+    })
+    patterns = [
+        re.compile(r'\b(?:export|generate|download|print)\s+(?:all\s+)?(?:contacts|leads|tasks?|events?|meetings?|campaigns?|workflows?|notifications?)'),
+        re.compile(r'\b(?:export|generate|download|print)\s+(?:(?:complete|full|all)\s+)?crm\b'),
+        re.compile(r'\b(?:generate|create)\s+(?:a\s+)?(?:crm\s+)?(?:summary|sales)\s+report\b'),
+        re.compile(r'\b(?:export|save|download)\s+(?:as|to|in)\s+(?:pdf|csv|excel|xlsx)\b'),
+        re.compile(r'\b(?:today\'?s?\s+)?(?:tasks?|events?|meetings?)\s+(?:as|to)?\s*(?:pdf|csv|excel|xlsx)'),
+        re.compile(r'\bacitve\s+campaigns?\b'),
+    ]
+
+    _ENTITY_ALIASES = {
+        'contacts': 'contacts', 'contact': 'contacts',
+        'leads': 'leads', 'lead': 'leads',
+        'tasks': 'tasks', 'task': 'tasks',
+        'events': 'events', 'event': 'events',
+        'meetings': 'events', 'meeting': 'events',
+        'campaigns': 'campaigns', 'campaign': 'campaigns',
+        'workflows': 'workflows', 'workflow': 'workflows',
+        'notifications': 'notifications', 'notification': 'notifications',
+        'summary': 'summary', 'sales': 'summary',
+        'complete': 'full', 'full': 'full', 'all': 'full',
+    }
+
+    _FORMAT_ALIASES = {
+        'csv': 'csv', 'xlsx': 'xlsx', 'excel': 'xlsx',
+        'pdf': 'pdf',
+    }
+
+    # ── Detection helpers ──
+
+    @staticmethod
+    def _detect_entity(text_lower):
+        """Return entity slug or None."""
+        # Check for summary / sales report first
+        if re.search(r'\b(summary|sales)\s+report\b', text_lower):
+            return 'summary'
+        if re.search(r'\b(?:complete|full|all)\s+crm\b', text_lower) or text_lower.strip() == 'export crm':
+            return 'full'
+
+        # Check for active campaigns
+        if re.search(r'\bactive\s+campaigns?\b', text_lower):
+            return 'campaigns'
+
+        # Check for today's tasks / events
+        if re.search(r'\btoday\'?s?\s+(?:tasks?|events?|meetings?)\b', text_lower):
+            entity_match = re.search(r'\b(tasks?|events?|meetings?)\b', text_lower)
+            word = entity_match.group(1)
+            return CrmReportsAction._ENTITY_ALIASES.get(word, 'tasks')
+
+        # General entity detection
+        for word, slug in sorted(
+            CrmReportsAction._ENTITY_ALIASES.items(),
+            key=lambda x: -len(x[0]),
+        ):
+            if (
+                word in text_lower
+                and slug not in ('summary', 'full')
+            ):
+                # Prefer more specific match — don't match if the word
+                # is inside "complete crm" or "summary report"
+                if re.search(r'\b' + re.escape(word) + r'\b', text_lower):
+                    return slug
+
+        # If only "export" / "generate" / "report" is found, default to summary
+        if re.search(r'\b(?:export|report|generate|print)\b', text_lower):
+            return 'summary'
+
+        return None
+
+    @staticmethod
+    def _detect_format(text_lower):
+        """Return format slug or default to pdf."""
+        for fmt in ('pdf', 'xlsx', 'excel', 'csv'):
+            if fmt in text_lower:
+                return CrmReportsAction._FORMAT_ALIASES.get(fmt, 'pdf')
+        return 'pdf'
+
+    # ── Data queries ──
+
+    @staticmethod
+    def _query_contacts(user, extra_filters=None):
+        qs = user.contacts.all().order_by('full_name')
+        if extra_filters:
+            qs = qs.filter(**extra_filters)
+        return list(qs.values(
+            'full_name', 'email', 'phone', 'company',
+            'job_title', 'tags', 'created_at',
+        ))
+
+    @staticmethod
+    def _query_leads(user, extra_filters=None):
+        qs = user.leads.all().order_by('lead_name')
+        if extra_filters:
+            qs = qs.filter(**extra_filters)
+        return list(qs.values(
+            'lead_name', 'email', 'phone', 'priority',
+            'status', 'expected_revenue', 'created_at',
+        ))
+
+    @staticmethod
+    def _query_tasks(user, extra_filters=None):
+        qs = user.tasks.all().order_by('-created_at')
+        if extra_filters:
+            qs = qs.filter(**extra_filters)
+        results = []
+        for t in qs.select_related('contact'):
+            results.append({
+                'title': t.title,
+                'priority': t.priority,
+                'status': t.status,
+                'due_date': t.due_date,
+                'contact_name': t.contact.full_name if t.contact else '',
+            })
+        return results
+
+    @staticmethod
+    def _query_events(user, extra_filters=None):
+        qs = user.events.all().order_by('-start_date')
+        if extra_filters:
+            qs = qs.filter(**extra_filters)
+        return list(qs.values(
+            'title', 'start_date', 'start_time', 'location',
+            'status', 'event_type',
+        ))
+
+    @staticmethod
+    def _query_campaigns(user, extra_filters=None):
+        qs = user.campaigns.all().order_by('-created_at')
+        if extra_filters:
+            qs = qs.filter(**extra_filters)
+        return list(qs.values(
+            'name', 'status', 'scheduled_at', 'created_at',
+        ))
+
+    @staticmethod
+    def _query_workflows(user, extra_filters=None):
+        qs = user.workflows.all().order_by('-created_at')
+        if extra_filters:
+            qs = qs.filter(**extra_filters)
+        results = []
+        for w in qs.prefetch_related('actions'):
+            action_names = [a.get_action_type_display() for a in w.actions.all()]
+            results.append({
+                'name': w.name,
+                'trigger_type': w.get_trigger_type_display(),
+                'is_active': w.is_active,
+                'actions': ', '.join(action_names) if action_names else '—',
+            })
+        return results
+
+    @staticmethod
+    def _query_notifications(user, extra_filters=None):
+        qs = user.notifications.all().order_by('-created_at')
+        if extra_filters:
+            qs = qs.filter(**extra_filters)
+        return list(qs.values(
+            'title', 'message', 'is_read', 'created_at',
+        ))
+
+    # ── File generation ──
+
+    @staticmethod
+    def _save_file(filename, content_bytes, user=None):
+        """Write *content_bytes* to ``media/reports/<user_id>/`` and return
+        the relative URL path. Filenames include a unique short-UUID so
+        previous reports are never overwritten."""
+        import os
+        import uuid
+        from django.conf import settings
+
+        # Namespace by user so reports are never exposed across users
+        subdir = f'reports/user_{user.pk}' if user else 'reports'
+        reports_dir = os.path.join(settings.MEDIA_ROOT, subdir)
+        os.makedirs(reports_dir, exist_ok=True)
+
+        # Insert a short unique id before the extension
+        stem, ext = os.path.splitext(filename)
+        unique_stem = f'{stem}_{uuid.uuid4().hex[:8]}'
+        safe_filename = f'{unique_stem}{ext}'
+
+        filepath = os.path.join(reports_dir, safe_filename)
+        with open(filepath, 'wb') as f:
+            f.write(content_bytes)
+
+        return f'{settings.MEDIA_URL}{subdir}/{safe_filename}'
+
+    def _build_download_url(self, path):
+        """Convert a media-relative path to an absolute download URL that
+        forces the browser to download the file instead of opening it
+        inline."""
+        from django.conf import settings
+        from django.urls import reverse
+        # Strip the MEDIA_URL prefix to get the path under reports/
+        relative_path = path
+        if relative_path.startswith(settings.MEDIA_URL):
+            relative_path = relative_path[len(settings.MEDIA_URL):]
+        # Strip the leading 'reports/' segment
+        if relative_path.startswith('reports/'):
+            relative_path = relative_path[len('reports/'):]
+        # Build the download view URL
+        dl_view_path = reverse('assistant:report_download') + '?path=' + quote(relative_path)
+        if hasattr(self, '_current_request') and self._current_request is not None:
+            return self._current_request.build_absolute_uri(dl_view_path)
+        return dl_view_path
+
+    @staticmethod
+    def _rows_to_csv(rows, field_names, field_labels):
+        import csv, io
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(field_labels)
+        for row in rows:
+            writer.writerow(str(row.get(f, '') or '') for f in field_names)
+        return buf.getvalue().encode('utf-8-sig')
+
+    @staticmethod
+    def _rows_to_xlsx(rows, field_names, field_labels, sheet_name):
+        import io
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        wb = Workbook()
+        ws = wb.active
+        ws.title = sheet_name[:31]
+
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        header_fill = PatternFill(start_color='2F5496', end_color='2F5496', fill_type='solid')
+        header_align = Alignment(horizontal='center', vertical='center')
+
+        for col_idx, label in enumerate(field_labels, 1):
+            cell = ws.cell(row=1, column=col_idx, value=label)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+
+        for row_idx, row in enumerate(rows, 2):
+            for col_idx, field in enumerate(field_names, 1):
+                val = row.get(field, '')
+                if val is None:
+                    val = ''
+                ws.cell(row=row_idx, column=col_idx, value=str(val))
+
+        for col_idx in range(1, len(field_labels) + 1):
+            ws.column_dimensions[chr(64 + col_idx)].width = 22
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf.getvalue()
+
+    @staticmethod
+    def _rows_to_pdf(rows, field_names, field_labels, title):
+        import io
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.units import mm
+        from reportlab.lib import colors
+        from reportlab.platypus import (
+            SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+        )
+        from reportlab.lib.styles import getSampleStyleSheet
+
+        import io
+        buf = io.BytesIO()
+        # Use landscape if many columns
+        page_size = landscape(A4) if len(field_labels) > 6 else A4
+        doc = SimpleDocTemplate(buf, pagesize=page_size, topMargin=20*mm, bottomMargin=15*mm)
+        styles = getSampleStyleSheet()
+
+        elements = []
+        elements.append(Paragraph(title, styles['Title']))
+        elements.append(Spacer(1, 10*mm))
+
+        header_row = field_labels
+        data_rows = []
+        for row in rows:
+            data_rows.append([str(row.get(f, '') or '') for f in field_names])
+
+        table_data = [header_row] + data_rows
+        col_count = len(field_labels)
+        available_width = page_size[0] - 40*mm
+        col_width = available_width / max(col_count, 1)
+
+        table = Table(table_data, colWidths=[col_width] * col_count, repeatRows=1)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2F5496')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F2F2')]),
+        ]))
+
+        # Handle page-break for many rows
+        max_rows_per_page = 40
+        if len(table_data) > max_rows_per_page + 1:
+            elements.append(table)
+        else:
+            elements.append(table)
+
+        doc.build(elements)
+        buf.seek(0)
+        return buf.getvalue()
+
+    # ── Summary data ──
+
+    @staticmethod
+    def _build_summary_data(user):
+        from datetime import date
+        from django.db import models
+        today = date.today()
+        contacts_count = user.contacts.count()
+        leads_count = user.leads.count()
+        leads_high = user.leads.filter(priority__in=['High', 'Urgent']).count()
+        total_revenue = (
+            user.leads.aggregate(total=models.Sum('expected_revenue'))['total'] or 0
+        )
+        tasks_total = user.tasks.count()
+        tasks_completed = user.tasks.filter(status='completed').count()
+        tasks_pending = user.tasks.filter(status='pending').count()
+        events_total = user.events.filter(start_date__gte=today).count()
+        campaigns_total = user.campaigns.count()
+        workflows_active = user.workflows.filter(is_active=True).count()
+        notifications_unread = user.notifications.filter(is_read=False).count()
+        return {
+            'contacts_count': contacts_count,
+            'leads_count': leads_count,
+            'leads_high': leads_high,
+            'total_revenue': total_revenue,
+            'tasks_total': tasks_total,
+            'tasks_completed': tasks_completed,
+            'tasks_pending': tasks_pending,
+            'events_total': events_total,
+            'campaigns_total': campaigns_total,
+            'workflows_active': workflows_active,
+            'notifications_unread': notifications_unread,
+        }
+
+    @staticmethod
+    def _generate_summary_report(user, fmt):
+        from datetime import datetime, date
+        data = CrmReportsAction._build_summary_data(user)
+        today_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        if fmt == 'csv':
+            rows = [
+                {'metric': 'Contacts', 'value': data['contacts_count']},
+                {'metric': 'Leads', 'value': data['leads_count']},
+                {'metric': 'High Priority Leads', 'value': data['leads_high']},
+                {'metric': 'Expected Revenue', 'value': f'${data["total_revenue"]:,.2f}'},
+                {'metric': 'Tasks', 'value': data['tasks_total']},
+                {'metric': 'Tasks Completed', 'value': data['tasks_completed']},
+                {'metric': 'Tasks Pending', 'value': data['tasks_pending']},
+                {'metric': 'Upcoming Events', 'value': data['events_total']},
+                {'metric': 'Campaigns', 'value': data['campaigns_total']},
+                {'metric': 'Active Workflows', 'value': data['workflows_active']},
+                {'metric': 'Unread Notifications', 'value': data['notifications_unread']},
+            ]
+            field_names = ['metric', 'value']
+            field_labels = ['Metric', 'Value']
+            content = CrmReportsAction._rows_to_csv(rows, field_names, field_labels)
+            filename = f'crm_summary_{today_str}.csv'
+            url = CrmReportsAction._save_file(filename, content, user)
+            return url, f'**CRM Summary Report** exported as CSV.'
+
+        elif fmt == 'xlsx':
+            rows = [
+                {'metric': 'Contacts', 'value': data['contacts_count']},
+                {'metric': 'Leads', 'value': data['leads_count']},
+                {'metric': 'High Priority Leads', 'value': data['leads_high']},
+                {'metric': 'Expected Revenue', 'value': f'${data["total_revenue"]:,.2f}'},
+                {'metric': 'Tasks', 'value': data['tasks_total']},
+                {'metric': 'Tasks Completed', 'value': data['tasks_completed']},
+                {'metric': 'Tasks Pending', 'value': data['tasks_pending']},
+                {'metric': 'Upcoming Events', 'value': data['events_total']},
+                {'metric': 'Campaigns', 'value': data['campaigns_total']},
+                {'metric': 'Active Workflows', 'value': data['workflows_active']},
+                {'metric': 'Unread Notifications', 'value': data['notifications_unread']},
+            ]
+            field_names = ['metric', 'value']
+            field_labels = ['Metric', 'Value']
+            content = CrmReportsAction._rows_to_xlsx(rows, field_names, field_labels, 'Summary')
+            filename = f'crm_summary_{today_str}.xlsx'
+            url = CrmReportsAction._save_file(filename, content, user)
+            return url, f'**CRM Summary Report** exported as Excel.'
+
+        else:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.units import mm
+            from reportlab.lib import colors
+            from reportlab.platypus import (
+                SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+            )
+            from reportlab.lib.styles import getSampleStyleSheet
+
+            import io
+            buf = io.BytesIO()
+            doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20*mm, bottomMargin=15*mm)
+            styles = getSampleStyleSheet()
+
+            elements = []
+            elements.append(Paragraph('CRM Summary Report', styles['Title']))
+            elements.append(Paragraph(f'Generated: {date.today().strftime("%B %d, %Y")}', styles['Normal']))
+            elements.append(Spacer(1, 8*mm))
+
+            summary_items = [
+                ['Metric', 'Value'],
+                ['Contacts', str(data['contacts_count'])],
+                ['Leads', str(data['leads_count'])],
+                ['High Priority Leads', str(data['leads_high'])],
+                ['Expected Revenue', f'${data["total_revenue"]:,.2f}'],
+                ['Tasks', str(data['tasks_total'])],
+                ['Tasks Completed', str(data['tasks_completed'])],
+                ['Tasks Pending', str(data['tasks_pending'])],
+                ['Upcoming Events', str(data['events_total'])],
+                ['Campaigns', str(data['campaigns_total'])],
+                ['Active Workflows', str(data['workflows_active'])],
+                ['Unread Notifications', str(data['notifications_unread'])],
+            ]
+            t = Table(summary_items, colWidths=[120*mm, 80*mm])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2F5496')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F2F2')]),
+            ]))
+            elements.append(t)
+
+            doc.build(elements)
+            buf.seek(0)
+            content = buf.getvalue()
+            filename = f'crm_summary_{today_str}.pdf'
+            url = CrmReportsAction._save_file(filename, content, user)
+            return url, f'**CRM Summary Report** exported as PDF.'
+
+    # ── Per-entity report generators ──
+
+    _ENTITY_REPORT = {
+        'contacts': {
+            'label': 'Contacts',
+            'query_method': '_query_contacts',
+            'fields': ['full_name', 'email', 'phone', 'company', 'job_title', 'tags', 'created_at'],
+            'headers': ['Name', 'Email', 'Phone', 'Company', 'Position', 'Tags', 'Created Date'],
+        },
+        'leads': {
+            'label': 'Leads',
+            'query_method': '_query_leads',
+            'fields': ['lead_name', 'email', 'phone', 'priority', 'status', 'expected_revenue', 'created_at'],
+            'headers': ['Name', 'Email', 'Phone', 'Priority', 'Status', 'Expected Revenue', 'Created Date'],
+        },
+        'tasks': {
+            'label': 'Tasks',
+            'query_method': '_query_tasks',
+            'fields': ['title', 'priority', 'status', 'due_date', 'contact_name'],
+            'headers': ['Title', 'Priority', 'Status', 'Due Date', 'Contact'],
+        },
+        'events': {
+            'label': 'Events',
+            'query_method': '_query_events',
+            'fields': ['title', 'start_date', 'start_time', 'location', 'status', 'event_type'],
+            'headers': ['Title', 'Date', 'Time', 'Location', 'Status', 'Type'],
+        },
+        'campaigns': {
+            'label': 'Campaigns',
+            'query_method': '_query_campaigns',
+            'fields': ['name', 'status', 'scheduled_at', 'created_at'],
+            'headers': ['Name', 'Status', 'Scheduled At', 'Created Date'],
+        },
+        'workflows': {
+            'label': 'Workflows',
+            'query_method': '_query_workflows',
+            'fields': ['name', 'trigger_type', 'is_active', 'actions'],
+            'headers': ['Name', 'Trigger', 'Active', 'Actions'],
+        },
+        'notifications': {
+            'label': 'Notifications',
+            'query_method': '_query_notifications',
+            'fields': ['title', 'message', 'is_read', 'created_at'],
+            'headers': ['Title', 'Message', 'Read', 'Created Date'],
+        },
+    }
+
+    @staticmethod
+    def _generate_entity_report(entity, user, fmt, extra_filters=None):
+        from datetime import datetime
+        meta = CrmReportsAction._ENTITY_REPORT.get(entity)
+        if not meta:
+            return None, f'Unknown entity: {entity}'
+
+        query_method_name = meta['query_method']
+        query_method = getattr(CrmReportsAction, query_method_name)
+        rows = query_method(user, extra_filters)
+        field_names = meta['fields']
+        field_labels = meta['headers']
+        label = meta['label']
+        today_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        if not rows:
+            return None, f'No **{label.lower()}** found to export.'
+
+        if fmt == 'csv':
+            content = CrmReportsAction._rows_to_csv(rows, field_names, field_labels)
+            filename = f'{entity}_{today_str}.csv'
+        elif fmt == 'xlsx':
+            content = CrmReportsAction._rows_to_xlsx(rows, field_names, field_labels, label)
+            filename = f'{entity}_{today_str}.xlsx'
+        else:
+            content = CrmReportsAction._rows_to_pdf(rows, field_names, field_labels, f'{label} Report')
+            filename = f'{entity}_{today_str}.pdf'
+
+        url = CrmReportsAction._save_file(filename, content, user)
+        fmt_display = fmt.upper()
+        return url, f'**{label}** report exported as {fmt_display}.'
+
+    @staticmethod
+    def _generate_full_report(user, fmt):
+        from datetime import datetime
+        today_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        entities = ['contacts', 'leads', 'tasks', 'events', 'campaigns', 'workflows', 'notifications']
+
+        if fmt == 'xlsx':
+            import io
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+            wb = Workbook()
+            wb.remove(wb.active)
+
+            header_font = Font(bold=True, color='FFFFFF', size=11)
+            header_fill = PatternFill(start_color='2F5496', end_color='2F5496', fill_type='solid')
+            header_align = Alignment(horizontal='center', vertical='center')
+
+            for entity in entities:
+                meta = CrmReportsAction._ENTITY_REPORT[entity]
+                query_method = getattr(CrmReportsAction, meta['query_method'])
+                rows = query_method(user)
+                field_names = meta['fields']
+                field_labels = meta['headers']
+                label = meta['label']
+
+                ws = wb.create_sheet(title=label[:31])
+                for col_idx, hl in enumerate(field_labels, 1):
+                    cell = ws.cell(row=1, column=col_idx, value=hl)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = header_align
+
+                for row_idx, row in enumerate(rows, 2):
+                    for col_idx, fn in enumerate(field_names, 1):
+                        val = row.get(fn, '')
+                        if val is None:
+                            val = ''
+                        ws.cell(row=row_idx, column=col_idx, value=str(val))
+
+                for col_idx in range(1, len(field_labels) + 1):
+                    ws.column_dimensions[chr(64 + col_idx)].width = 22
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            content = buf.getvalue()
+            filename = f'full_crm_{today_str}.xlsx'
+            url = CrmReportsAction._save_file(filename, content, user)
+            return url, '**Complete CRM** exported as Excel with 7 sheets.'
+
+        # For PDF and CSV: generate one file per entity and return the last
+        if fmt == 'csv':
+            for entity in entities:
+                meta = CrmReportsAction._ENTITY_REPORT[entity]
+                query_method = getattr(CrmReportsAction, meta['query_method'])
+                rows = query_method(user)
+                field_names = meta['fields']
+                field_labels = meta['headers']
+                content = CrmReportsAction._rows_to_csv(rows, field_names, field_labels)
+                filename = f'{entity}_{today_str}.csv'
+                CrmReportsAction._save_file(filename, content, user)
+            msg = '**Complete CRM** exported as 7 CSV files in the reports folder.'
+            return None, msg
+
+        if fmt == 'pdf':
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib.units import mm
+            from reportlab.lib import colors
+            from reportlab.platypus import (
+                SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak,
+            )
+            from reportlab.lib.styles import getSampleStyleSheet
+
+            import io
+            buf = io.BytesIO()
+            doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20*mm, bottomMargin=15*mm)
+            styles = getSampleStyleSheet()
+            elements = []
+
+            for entity in entities:
+                meta = CrmReportsAction._ENTITY_REPORT[entity]
+                query_method = getattr(CrmReportsAction, meta['query_method'])
+                rows = query_method(user)
+                field_names = meta['fields']
+                field_labels = meta['headers']
+                label = meta['label']
+                if elements:
+                    elements.append(PageBreak())
+                elements.append(Paragraph(f'{label} Report', styles['Heading1']))
+                elements.append(Spacer(1, 5*mm))
+
+                header_row = field_labels
+                data_rows = []
+                for row in rows:
+                    data_rows.append([str(row.get(f, '') or '') for f in field_names])
+
+                table_data = [header_row] + data_rows
+                col_count = len(field_labels)
+                available_width = A4[0] - 40*mm
+                col_width = max(available_width / max(col_count, 1), 25*mm)
+
+                if col_count > 5:
+                    # Need landscape
+                    doc.pagesize = landscape(A4)
+                    available_width = landscape(A4)[0] - 40*mm
+                    col_width = available_width / col_count
+
+                t = Table(table_data, colWidths=[col_width] * col_count, repeatRows=1)
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2F5496')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 8),
+                    ('FONTSIZE', (0, 1), (-1, -1), 7),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F2F2')]),
+                ]))
+                elements.append(t)
+
+            doc.build(elements)
+            buf.seek(0)
+            content = buf.getvalue()
+            filename = f'full_crm_{today_str}.pdf'
+            url = CrmReportsAction._save_file(filename, content, user)
+            return url, '**Complete CRM** exported as PDF with 7 sections.'
+
+    # ── Response formatter ──
+
+    @staticmethod
+    def _parse_filename_from_url(url):
+        """Extract the filename from a relative media URL."""
+        if not url or '/' not in url:
+            return 'report'
+        return url.rsplit('/')[-1]
+
+    @staticmethod
+    def _fmt_label(entity):
+        return entity.replace('_', ' ').title()
+
+    def _format_download_response(self, url, msg, entity, fmt):
+        """Return a rich download response with absolute URL, filename and
+        metadata."""
+        if not url:
+            return f'❌ Failed to generate report.\n\n{msg}' if msg else '❌ Failed to generate report.'
+
+        absolute_url = self._build_download_url(url)
+        filename = self._parse_filename_from_url(url)
+
+        fmt_icons = {'pdf': '📄', 'xlsx': '📊', 'csv': '📁'}
+        icon = fmt_icons.get(fmt, '📄')
+        fmt_upper = fmt.upper()
+        label = self._fmt_label(entity)
+
+        from datetime import datetime
+        now_str = datetime.now().strftime('%B %d, %Y at %I:%M %p').lstrip('0')
+
+        lines = [
+            f'✅ {label} Report Generated Successfully',
+            '',
+            f'**File Name:**',
+            f'{filename}',
+            '',
+            f'**Format:**',
+            f'{icon} {fmt_upper} (.{fmt})',
+            '',
+            f'**Generated:**',
+            f'{now_str}',
+            '',
+            f'**Download:**',
+            f'{icon} [⬇ Download {label} Report]({absolute_url})',
+            '',
+            f'---',
+            f'*Secure link — only you can access this report.*',
+        ]
+        return '\n'.join(lines)
+
+    # ── Entry point ──
+
+    def execute(self, text, user):
+        if not user or not user.is_authenticated:
+            return None
+
+        text_lower = text.lower()
+        entity = self._detect_entity(text_lower)
+        if entity is None:
+            return None
+
+        fmt = self._detect_format(text_lower)
+
+        from django.db import models as django_models
+        models = django_models  # for .Sum in summary
+
+        try:
+            if entity == 'summary':
+                url, msg = self._generate_summary_report(user, fmt)
+                return self._format_download_response(url, msg, entity, fmt)
+
+            if entity == 'full':
+                url, msg = self._generate_full_report(user, fmt)
+                return self._format_download_response(url, msg, entity, fmt)
+
+            # Apply time-based filters
+            extra_filters = {}
+            if re.search(r'\btoday\'?s?\b', text_lower):
+                from datetime import date
+                today = date.today()
+                if entity == 'tasks':
+                    extra_filters['due_date'] = today
+                elif entity == 'events':
+                    extra_filters['start_date'] = today
+            elif re.search(r'\bthis\s+month\'?s?\b', text_lower):
+                from datetime import date
+                today = date.today()
+                if entity == 'events':
+                    extra_filters['start_date__year'] = today.year
+                    extra_filters['start_date__month'] = today.month
+                elif entity == 'tasks':
+                    extra_filters['due_date__year'] = today.year
+                    extra_filters['due_date__month'] = today.month
+            elif re.search(r'\bactive\b', text_lower) and entity == 'campaigns':
+                extra_filters['status'] = 'Scheduled'
+
+            url, msg = self._generate_entity_report(entity, user, fmt, extra_filters)
+            return self._format_download_response(url, msg, entity, fmt)
+
+        except Exception as e:
+            logger.exception('CrmReportsAction failed for user=%s', user)
+            return f'❌ Failed to generate report.\n\n**Reason:** {e}'
