@@ -127,6 +127,7 @@ class ActionLayer:
         'view_lead': r'\blead\b|\bprospect\b|\bdeal\b',
         'view_task': r'\btask\b|\bto-?do\b',
         'view_event': r'\bevent\b|\bmeeting\b|\bappointment\b',
+        'analytics': r'\bhow\s+many\b|\bcount\b|\btotal\b|\bnumber\s+of\b|\bhow\s+much\b|\brevenue\b',
     }
 
     @staticmethod
@@ -4709,3 +4710,343 @@ class ComposeEmailAction(BaseAction):
         lines.append('')
         lines.append(body)
         return '\n'.join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  analytics — AI CRM Analytics
+# ═══════════════════════════════════════════════════════════════════════════
+
+@register
+class AnalyticsAction(BaseAction):
+    """Answer analytical questions by querying the CRM database directly,
+    without using the LLM.
+
+    Supports counting contacts, leads, tasks, events, campaigns, workflows,
+    and notifications with filters for status, priority, and time ranges.
+    """
+
+    action_type = 'analytics'
+    keywords = frozenset({
+        'how many', 'count', 'total', 'number of', 'how much',
+        'expected revenue', 'revenue',
+    })
+    patterns = [
+        re.compile(r'(?:how many|count|total|number of|how much)'),
+        re.compile(r'expected revenue'),
+    ]
+
+    # ── Entity detection (ordered: more specific first) ──
+    _ENTITY_MAP = [
+        (re.compile(r'\bcontacts?\b', re.IGNORECASE), 'contact'),
+        (re.compile(r'\bleads?\b|\bprospects?\b|\bdeals?\b', re.IGNORECASE), 'lead'),
+        (re.compile(r'\btasks?\b|\bto-?dos?\b', re.IGNORECASE), 'task'),
+        (re.compile(r'\bmeetings?\b|\bappointments?\b', re.IGNORECASE), 'meeting'),
+        (re.compile(r'\b(?:calendar\s+)?events?\b', re.IGNORECASE), 'event'),
+        (re.compile(r'\bcampaigns?\b', re.IGNORECASE), 'campaign'),
+        (re.compile(r'\bworkflows?\b|\bautomations?\b', re.IGNORECASE), 'workflow'),
+        (re.compile(r'\bnotifications?\b|\balerts?\b', re.IGNORECASE), 'notification'),
+    ]
+
+    # ── Filter patterns ──
+    _STATUS_MAP = {
+        'active': re.compile(r'\bactive\b', re.IGNORECASE),
+        'inactive': re.compile(r'\binactive\b', re.IGNORECASE),
+        'completed': re.compile(r'\bcompleted\b|\bdone\b|\bfinished\b', re.IGNORECASE),
+        'pending': re.compile(r'\bpending\b', re.IGNORECASE),
+        'scheduled': re.compile(r'\bscheduled\b|\bupcoming\b', re.IGNORECASE),
+        'cancelled': re.compile(r'\bcancelled?\b', re.IGNORECASE),
+        'draft': re.compile(r'\bdraft\b', re.IGNORECASE),
+        'sent': re.compile(r'\bsent\b', re.IGNORECASE),
+        'won': re.compile(r'\bwon\b', re.IGNORECASE),
+        'lost': re.compile(r'\blost\b', re.IGNORECASE),
+        'unread': re.compile(r'\bunread\b', re.IGNORECASE),
+        'overdue': re.compile(r'\boverdue\b|\bover\s*due\b', re.IGNORECASE),
+    }
+    _PRIORITY_MAP = {
+        'high': re.compile(r'\bhigh[-\s]priority\b|\bhigh\b', re.IGNORECASE),
+        'medium': re.compile(r'\bmedium[-\s]priority\b|\bmedium\b', re.IGNORECASE),
+        'low': re.compile(r'\blow[-\s]priority\b|\blow\b', re.IGNORECASE),
+    }
+    _TIME_MAP = {
+        'today': re.compile(r'\btoday\b', re.IGNORECASE),
+        'tomorrow': re.compile(r'\btomorrow\b', re.IGNORECASE),
+        'this_week': re.compile(r'\bthis\s+week\b', re.IGNORECASE),
+        'next_week': re.compile(r'\bnext\s+week\b', re.IGNORECASE),
+        'this_month': re.compile(r'\bthis\s+month\b', re.IGNORECASE),
+        'last_month': re.compile(r'\blast\s+month\b', re.IGNORECASE),
+        'this_year': re.compile(r'\bthis\s+year\b', re.IGNORECASE),
+    }
+    _TIME_LABELS = {
+        'today': 'for today',
+        'tomorrow': 'for tomorrow',
+        'this_week': 'this week',
+        'next_week': 'next week',
+        'this_month': 'this month',
+        'last_month': 'last month',
+        'this_year': 'this year',
+    }
+
+    # ------------------------------------------------------------------
+    # Detection helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_entity(text):
+        for pattern, entity in AnalyticsAction._ENTITY_MAP:
+            if pattern.search(text):
+                return entity
+        return None
+
+    @staticmethod
+    def _detect_filter(text, filter_map):
+        for key, pattern in filter_map.items():
+            if pattern.search(text):
+                return key
+        return None
+
+    # ------------------------------------------------------------------
+    # Date-range logic
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_date_range(time_key):
+        today = date.today()
+        if time_key == 'today':
+            return today, today
+        elif time_key == 'tomorrow':
+            d = today + timedelta(days=1)
+            return d, d
+        elif time_key == 'this_week':
+            start = today - timedelta(days=today.weekday())
+            return start, start + timedelta(days=6)
+        elif time_key == 'next_week':
+            start = today - timedelta(days=today.weekday()) + timedelta(days=7)
+            return start, start + timedelta(days=6)
+        elif time_key == 'this_month':
+            start = today.replace(day=1)
+            if start.month == 12:
+                end = start.replace(year=start.year + 1, month=1, day=1) - timedelta(days=1)
+            else:
+                end = start.replace(month=start.month + 1, day=1) - timedelta(days=1)
+            return start, end
+        elif time_key == 'last_month':
+            first_this = today.replace(day=1)
+            end = first_this - timedelta(days=1)
+            return end.replace(day=1), end
+        elif time_key == 'this_year':
+            start = today.replace(month=1, day=1)
+            return start, today.replace(month=12, day=31)
+        return None, None
+
+    @staticmethod
+    def _apply_time_filter(qs, time_key, field_name):
+        if not time_key:
+            return qs
+        start, end = AnalyticsAction._get_date_range(time_key)
+        if not start:
+            return qs
+        return qs.filter(**{
+            f'{field_name}__gte': start,
+            f'{field_name}__lt': end + timedelta(days=1),
+        })
+
+    # ------------------------------------------------------------------
+    # Entity-specific filter helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _count_leads(user, status, priority, time_key):
+        from django.db.models import Q
+        qs = user.leads.all()
+        if status:
+            mapping = {
+                'active': ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation'],
+                'inactive': ['Won', 'Lost'],
+                'won': ['Won'],
+                'lost': ['Lost'],
+                'pending': ['New', 'Contacted'],
+                'completed': ['Won'],
+            }
+            if status in mapping:
+                qs = qs.filter(status__in=mapping[status])
+        if priority:
+            qs = qs.filter(priority__iexact=priority.capitalize())
+        qs = AnalyticsAction._apply_time_filter(qs, time_key, 'created_at')
+        return qs.count()
+
+    @staticmethod
+    def _count_tasks(user, status, priority, time_key):
+        from django.db.models import Q
+        qs = user.tasks.all()
+        if status == 'overdue':
+            qs = qs.filter(due_date__lt=date.today()).exclude(status='completed')
+        elif status:
+            mapping = {
+                'completed': ['completed'],
+                'pending': ['pending'],
+                'active': ['pending', 'in_progress'],
+                'in_progress': ['in_progress'],
+            }
+            if status in mapping:
+                qs = qs.filter(status__in=mapping[status])
+        if priority:
+            qs = qs.filter(priority__iexact=priority)
+        qs = AnalyticsAction._apply_time_filter(qs, time_key, 'created_at')
+        return qs.count()
+
+    @staticmethod
+    def _count_events(user, entity, status, time_key):
+        qs = user.events.all()
+        if entity == 'meeting':
+            qs = qs.filter(event_type='meeting')
+        if status:
+            mapping = {
+                'scheduled': ['scheduled'],
+                'completed': ['completed'],
+                'cancelled': ['cancelled'],
+                'upcoming': ['scheduled'],
+            }
+            if status in mapping:
+                qs = qs.filter(status__in=mapping[status])
+        qs = AnalyticsAction._apply_time_filter(qs, time_key, 'start_date')
+        return qs.count()
+
+    @staticmethod
+    def _count_campaigns(user, status, time_key):
+        qs = user.campaigns.all()
+        if status:
+            mapping = {
+                'draft': ['Draft'],
+                'scheduled': ['Scheduled'],
+                'sent': ['Sent'],
+                'active': ['Scheduled', 'Sent'],
+            }
+            if status in mapping:
+                qs = qs.filter(status__in=mapping[status])
+        qs = AnalyticsAction._apply_time_filter(qs, time_key, 'created_at')
+        return qs.count()
+
+    @staticmethod
+    def _count_workflows(user, status, time_key):
+        qs = user.workflows.all()
+        if status == 'active':
+            qs = qs.filter(is_active=True)
+        elif status == 'inactive':
+            qs = qs.filter(is_active=False)
+        qs = AnalyticsAction._apply_time_filter(qs, time_key, 'created_at')
+        return qs.count()
+
+    @staticmethod
+    def _count_notifications(user, status, time_key):
+        qs = user.notifications.all()
+        if status == 'unread':
+            qs = qs.filter(is_read=False)
+        qs = AnalyticsAction._apply_time_filter(qs, time_key, 'created_at')
+        return qs.count()
+
+    @staticmethod
+    def _query_revenue(user, time_key):
+        from django.db.models import Sum
+        qs = user.leads.all()
+        qs = AnalyticsAction._apply_time_filter(qs, time_key, 'created_at')
+        total = qs.aggregate(total=Sum('expected_revenue'))['total'] or 0
+        if total == 0:
+            return 'You have no expected revenue recorded yet.'
+        time_str = AnalyticsAction._TIME_LABELS.get(time_key, '')
+        if time_str:
+            return f'Your total expected revenue {time_str} is ${total:,.2f}.'
+        return f'Your total expected revenue is ${total:,.2f}.'
+
+    # ------------------------------------------------------------------
+    # Response formatting
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _format_response(entity, count, status, priority, time_key):
+        display_names = {
+            'contact': 'contacts',
+            'lead': 'leads',
+            'task': 'tasks',
+            'meeting': 'meetings',
+            'event': 'events',
+            'campaign': 'campaigns',
+            'workflow': 'workflows',
+            'notification': 'notifications',
+        }
+        name = display_names.get(entity, entity + 's')
+
+        time_str = AnalyticsAction._TIME_LABELS.get(time_key, '')
+
+        if time_str:
+            if status:
+                return f'You have {count} {status} {name} {time_str}.'
+            if priority:
+                return f'You have {count} {priority}-priority {name} {time_str}.'
+            return f'You have {count} {name} {time_str}.'
+
+        if priority:
+            return f'You currently have {count} {priority}-priority {name}.'
+        if status:
+            return f'You currently have {count} {status} {name}.'
+        if count == 1:
+            return f'You currently have 1 {entity}.'
+        return f'You currently have {count} {name}.'
+
+    @staticmethod
+    def _help_message():
+        return (
+            'I can help you analyse your CRM data. '
+            'Try asking:\n'
+            '- How many contacts do I have?\n'
+            '- How many high priority leads?\n'
+            '- How many tasks are overdue?\n'
+            '- How many meetings this week?\n'
+            '- How many workflows are active?\n'
+            '- What is my expected revenue?'
+        )
+
+    # ------------------------------------------------------------------
+    # Entry point
+    # ------------------------------------------------------------------
+
+    def execute(self, text, user):
+        if not user or not user.is_authenticated:
+            return None
+
+        text_lower = text.lower()
+
+        # Detect time filter early (shared by all paths)
+        time_key = self._detect_filter(text_lower, self._TIME_MAP)
+
+        # Special case: revenue query (SUM, not COUNT)
+        if 'revenue' in text_lower:
+            return self._query_revenue(user, time_key)
+
+        # Detect entity
+        entity = self._detect_entity(text_lower)
+        if not entity:
+            return self._help_message()
+
+        status = self._detect_filter(text_lower, self._STATUS_MAP)
+        priority = self._detect_filter(text_lower, self._PRIORITY_MAP)
+
+        # Route to entity-specific counter
+        if entity == 'contact':
+            qs = self._apply_time_filter(user.contacts.all(), time_key, 'created_at')
+            count = qs.count()
+        elif entity == 'lead':
+            count = self._count_leads(user, status, priority, time_key)
+        elif entity == 'task':
+            count = self._count_tasks(user, status, priority, time_key)
+        elif entity in ('meeting', 'event'):
+            count = self._count_events(user, entity, status, time_key)
+        elif entity == 'campaign':
+            count = self._count_campaigns(user, status, time_key)
+        elif entity == 'workflow':
+            count = self._count_workflows(user, status, time_key)
+        elif entity == 'notification':
+            count = self._count_notifications(user, status, time_key)
+        else:
+            return self._help_message()
+
+        return self._format_response(entity, count, status, priority, time_key)
