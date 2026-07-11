@@ -9,6 +9,7 @@ import re
 from datetime import date, timedelta
 
 from django.utils import timezone
+from assistant.action_layer import _parse_date_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class CRMQueryService:
             (self._match_show_contacts, self._handle_show_contacts),
             (self._match_search_contact, self._handle_search_contact),
             (self._match_overdue_tasks, self._handle_overdue_tasks),
+            (self._match_events_by_date, self._handle_events_by_date),
             (self._match_today_events, self._handle_today_events),
             (self._match_active_campaigns, self._handle_active_campaigns),
             (self._match_notifications, self._handle_notifications),
@@ -107,6 +109,29 @@ class CRMQueryService:
         if re.search(r'(my\s+)?notifications', text):
             return {}
         return None
+
+    @staticmethod
+    def _match_events_by_date(text):
+        if not re.search(
+            r'\b(meeting|meetings|event|events|calendar|schedule|appointment)\b',
+            text,
+        ):
+            return None
+        m = re.search(
+            r'\b(today|tomorrow|yesterday|next\s+week|this\s+week|'
+            r'monday|tuesday|wednesday|thursday|friday|saturday|sunday|'
+            r'\d{1,2}(?:st|nd|rd|th)?\s+'
+            r'(?:january|february|march|april|may|june|'
+            r'july|august|september|october|november|december|'
+            r'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|'
+            r'(?:january|february|march|april|may|june|'
+            r'july|august|september|october|november|december|'
+            r'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}(?:st|nd|rd|th)?)\b',
+            text, re.IGNORECASE,
+        )
+        if not m:
+            return None
+        return {'text': text}
 
     # ------------------------------------------------------------------
     # Handlers — query DB and return a formatted string
@@ -192,6 +217,31 @@ class CRMQueryService:
             event_type = event.get_event_type_display()
             lines.append(
                 f'{i}. **{event.title}** ({event_type}){time_str}'
+            )
+        return '\n'.join(lines)
+
+    def _handle_events_by_date(self, text):
+        d, _ = _parse_date_from_text(text)
+        if not d:
+            return None
+        qs = self.user.events.filter(
+            start_date=d,
+        ).order_by('start_time', 'title')[:20]
+        if not qs:
+            date_str = d.strftime('%B %d, %Y')
+            return f'No events or meetings scheduled for {date_str}.'
+        date_str = d.strftime('%b %d, %Y')
+        lines = [f'**Events for {date_str}** ({len(qs)}):']
+        for i, event in enumerate(qs, 1):
+            time_str = (
+                event.start_time.strftime('%I:%M %p').lstrip('0')
+                if event.start_time else ''
+            )
+            time_str = f' @ {time_str}' if time_str else ''
+            event_type = event.get_event_type_display()
+            location = f' · {event.location}' if event.location else ''
+            lines.append(
+                f'{i}. **{event.title}** ({event_type}){time_str}{location}'
             )
         return '\n'.join(lines)
 

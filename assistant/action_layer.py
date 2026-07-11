@@ -118,6 +118,10 @@ class ActionLayer:
         'delete_task': r'\btask\b',
         'delete_event': r'\bevent\b|\bmeeting\b|\bappointment\b',
         'delete_campaign': r'\bcampaign\b',
+        'update_contact': r'\bcontact\b|\bperson\b',
+        'update_lead': r'\blead\b|\bprospect\b|\bdeal\b',
+        'update_event': r'\bevent\b|\bmeeting\b|\bappointment\b|' + 
+                        r'\blocation\b|\btime\b|\bdate\b|\bstatus\b|\btype\b',
         'view_contact': r'\bcontact\b|\bperson\b',
         'view_lead': r'\blead\b|\bprospect\b|\bdeal\b',
         'view_task': r'\btask\b|\bto-?do\b',
@@ -562,9 +566,20 @@ def _parse_update_field_value(text, field_map):
     keys = sorted(field_map.keys(), key=len, reverse=True)
     field_alt = '|'.join(re.escape(k) for k in keys)
 
-    # 1.  "<field> to/as/is/= <value>" at end (match on original text to preserve case)
+    # 0.  "<field> of <name> to/as <value>"  → "company of Rahul Sharma to Google"
     m = re.search(
-        r'\b(' + field_alt + r')\s+(?:to|as|is|=|:\s*)\s*(.+?)$',
+        r'\b(' + field_alt + r')\s+of\s+(.+?)\s+(?:to|as)\s+(.+?)$',
+        text_stripped, flags=re.IGNORECASE,
+    )
+    if m:
+        raw_field = m.group(1).lower()
+        value = m.group(3).strip()
+        remaining = m.group(2).strip()
+        return (field_map[raw_field], value, remaining)
+
+    # 1.  "<field> to/as/is/= <value>"  or  "<field>: <value>" at end
+    m = re.search(
+        r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*)\s*(.+?)$',
         text_stripped, flags=re.IGNORECASE,
     )
     if m:
@@ -578,9 +593,9 @@ def _parse_update_field_value(text, field_map):
         ).strip()
         return (field_map[raw_field], value, remaining)
 
-    # 2.  possessive:  "<name>'s <field> to <value>"
+    # 2.  possessive:  "<name>'s <field> to/as/is/= <value>"  or  "<name>'s <field>: <value>"
     m = re.search(
-        r"'s\s+(" + field_alt + r")\s+(?:to|as|is|=|:\s*)\s*(.+?)$",
+        r"'s\s+(" + field_alt + r")(?:\s+(?:to|as|is|=)|:\s*)\s*(.+?)$",
         text_stripped, flags=re.IGNORECASE,
     )
     if m:
@@ -1131,7 +1146,7 @@ class UpdateTaskAction(BaseAction):
         if field:
             params['field'] = field
             params['value'] = value
-            params['title'] = remaining
+            params['title'] = _extract_title(remaining)
             return params
 
         # 4. Fallback: extract date / time / priority from body
@@ -1533,17 +1548,19 @@ class UpdateContactAction(BaseAction):
     action_type = 'update_contact'
     keywords = frozenset({
         'update', 'edit', 'change', 'modify', 'set', 'rename',
-        'contact', 'person',
+        'contact', 'person', 'phone', 'email', 'company',
+        'notes', 'tags', 'mobile', 'number',
     })
     patterns = [
-        re.compile(r'(update|edit|change|modify|rename|set).*(contact|person)'),
+        re.compile(r'(update|edit|change|modify|rename|set)\b'),
         re.compile(r"(contact|person).*(?:'s\s+)?(?:phone|email|company|number|mobile|tag)"),
-        re.compile(r"(?:'s\s+)?(?:phone|email|mobile|telephone|company|organization)\s+(?:number\s+)?(?:to|as)"),
+        re.compile(r"(?:phone|email|mobile|telephone|company|organization|notes?|tags?|job.?title|designation)\s+(?:number\s+)?(?:to|as)"),
+        re.compile(r"(?:phone|email|mobile|telephone|company|organization|notes?|tags?|job.?title|designation)\s*:"),
     ]
 
     def _parse(self, text):
-        """Parse text → ``{name, field, value}``."""
-        params = {}
+        """Parse text → ``{name, updates: [(field, value), ...]}``."""
+        params = {'updates': []}
         body = text
 
         # 1. Strip action verb
@@ -1556,26 +1573,45 @@ class UpdateContactAction(BaseAction):
         # 2. Strip entity type
         body = re.sub(r'^(?:contact|person)\s+', '', body, flags=re.IGNORECASE).strip()
 
-        # 3. Try field-value extraction
-        field, value, remaining = _parse_update_field_value(body, _CONTACT_UPDATE_FIELDS)
-        if field:
-            params['field'] = field
-            params['value'] = value
-            params['name'] = remaining
+        keys = sorted(_CONTACT_UPDATE_FIELDS.keys(), key=len, reverse=True)
+        field_alt = '|'.join(re.escape(k) for k in keys)
+
+        # 3a. Format "field of name to value" (single update)
+        m = re.search(
+            r'\b(' + field_alt + r')\s+of\s+(.+?)\s+(?:to|as)\s+(.+?)$',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            raw_field = m.group(1).lower()
+            params['updates'].append((_CONTACT_UPDATE_FIELDS[raw_field], m.group(3).strip()))
+            params['name'] = _extract_title(m.group(2).strip())
+            return params
+
+        # 3b. Extract all "field: value" / "field to value" pairs
+        pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*)\s*'
+        matches = list(re.finditer(pair_re, body, flags=re.IGNORECASE))
+        if matches:
+            name_text = body[:matches[0].start()].strip()
+            params['name'] = _extract_title(name_text)
+            for i, m in enumerate(matches):
+                raw_field = m.group(1).lower()
+                val_start = m.end()
+                val_end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+                value = body[val_start:val_end].strip().rstrip('. ')
+                if value:
+                    params['updates'].append((_CONTACT_UPDATE_FIELDS[raw_field], value))
             return params
 
         # 4. Fallback: extract phone/email from body
         m = re.search(r'\b(\+?\d[\d\s\-().]{6,20}\d)\b', body)
         if m:
-            params['field'] = 'phone'
-            params['value'] = m.group(1).strip()
+            params['updates'].append(('phone', m.group(1).strip()))
             params['name'] = _extract_title(body[:m.start()])
             return params
 
         m = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b', body)
         if m:
-            params['field'] = 'email'
-            params['value'] = m.group(1).lower()
+            params['updates'].append(('email', m.group(1).lower()))
             params['name'] = _extract_title(body[:m.start()])
             return params
 
@@ -1589,11 +1625,8 @@ class UpdateContactAction(BaseAction):
         if not name:
             return 'I need a contact name to update. Which contact should I update?'
 
-        field = params.get('field', '')
-        value = params.get('value')
-
-        if not field or value is None:
-            # If we have a name but no field, list what can be updated
+        updates = params.get('updates', [])
+        if not updates:
             return (
                 f'I found contact "{name}", but what would you like to change? '
                 f'You can update phone, email, company, job title, tags, or notes.'
@@ -1611,16 +1644,21 @@ class UpdateContactAction(BaseAction):
         if not contact:
             return f'I could not find a contact matching "{name}".'
 
-        try:
-            norm_field, norm_value = _normalise_contact_field_value(field, str(value), user)
-        except ValueError as e:
-            return str(e)
+        # Normalise and set all field values
+        changed = []
+        for field, raw_value in updates:
+            try:
+                norm_field, norm_value = _normalise_contact_field_value(
+                    field, str(raw_value), user,
+                )
+            except ValueError as e:
+                return str(e)
+            setattr(contact, norm_field, norm_value)
+            changed.append((norm_field, norm_value))
 
-        old_value = getattr(contact, norm_field)
-
+        # Save once with all changes
         try:
             with transaction.atomic():
-                setattr(contact, norm_field, norm_value)
                 contact.full_clean()
                 contact.save()
                 contact.refresh_from_db()
@@ -1637,11 +1675,10 @@ class UpdateContactAction(BaseAction):
             logger.exception('Failed to update contact for user=%s', user)
             return f'Failed to update contact: {e}'
 
-        readable_field = norm_field.replace('_', ' ').title()
-        lines = [
-            f'Contact **"{contact.full_name}"** updated.',
-            f'{readable_field}: {norm_value}',
-        ]
+        lines = [f'Contact **"{contact.full_name}"** updated.']
+        for norm_field, norm_value in changed:
+            readable = norm_field.replace('_', ' ').title()
+            lines.append(f'{readable}: {norm_value}')
         return '  \n'.join(lines)
 
 
@@ -1650,8 +1687,7 @@ class DeleteContactAction(BaseAction):
     action_type = 'delete_contact'
     keywords = frozenset({'delete', 'remove', 'erase', 'contact', 'person'})
     patterns = [
-        re.compile(r'(delete|remove|erase)\s+(contact|person)'),
-        re.compile(r'(delete|remove|erase).*\b(contact|person)\b'),
+        re.compile(r'(delete|remove|erase)\b'),
     ]
 
     def _parse(self, text):
@@ -1668,32 +1704,30 @@ class DeleteContactAction(BaseAction):
     def execute(self, text, user):
         name = self._parse(text)
         if not name:
-            return 'I need a contact name to delete. Which contact should I delete?'
+            return 'Contact not found.'
 
         from contacts.models import Contact
 
         qs = user.contacts.all()
-        matches = list(qs.filter(full_name__icontains=name))
-        if len(matches) == 0:
-            return f'I could not find a contact matching "{name}".'
-        if len(matches) > 1:
-            names = '\n'.join(f'  {i+1}. **{c.full_name}**' for i, c in enumerate(matches))
-            return (
-                f'I found multiple contacts matching "{name}":\n'
-                f'{names}\n'
-                f'Please specify which one you want to delete.'
-            )
+        contact = qs.filter(full_name__icontains=name).first()
+        if not contact:
+            contact = qs.filter(full_name__iexact=name).first()
+        if not contact:
+            return 'Contact not found.'
 
-        contact = matches[0]
+        from django.db import transaction
         try:
-            from django.db import transaction
             with transaction.atomic():
                 contact.delete()
         except Exception as e:
             logger.exception('Failed to delete contact for user=%s', user)
             return f'Failed to delete contact: {e}'
 
-        return f'Contact **"{name}"** has been deleted.'
+        # Verify deletion
+        if Contact.objects.filter(pk=contact.pk).exists():
+            return 'Failed to delete contact.'
+
+        return 'Contact deleted successfully.'
 
 
 @register
@@ -1701,36 +1735,57 @@ class ViewContactAction(BaseAction):
     action_type = 'view_contact'
     keywords = frozenset({
         'contact', 'person', 'show', 'view', 'open', 'details',
-        'tell', 'about', 'who',
+        'tell', 'about', 'who', 'give', 'information',
     })
     patterns = [
-        re.compile(r'(show|view|open).*(contact|person)'),
-        re.compile(r'(contact|person).*(details|info|information)'),
         re.compile(r'(tell|show).*(about)'),
         re.compile(r'^who\s+is\b'),
+        re.compile(r'(show|view|open).*(details?|info|information)'),
+        re.compile(r'^(contact|give)\b'),
+        re.compile(r'(details?|info|information)\s+(about|on|for|of)'),
     ]
 
     def _parse(self, text):
         body = text
+
+        # Strip any leading intent prefix
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:show|view|open)\s+',
+            r'(?:'
+            r'tell\s+(?:me\s+)?(?:about|everything\s+about)\s+|'
+            r'show\s+(?:me\s+)?(?:details?\s+(?:of|for|about|on)\s+|'
+            r'(?:everything|full|complete)\s+about\s+|about\s+)|'
+            r'who\s+is\s+|'
+            r'contact\s+|'
+            r'give\s+(?:me\s+)?(?:information\s+(?:about|on)\s+|'
+            r'details?\s+(?:about|on)\s+)?|'
+            r'information\s+(?:about|on)\s+|'
+            r'details?\s+(?:about|on|for|of)\s+|'
+            r'about\s+|'
+            r'(?:view|open|see|display)\s+'
+            r')',
             '', body, flags=re.IGNORECASE,
         ).strip()
+
+        # Strip remaining noise words anywhere
         body = re.sub(
-            r'^(?:tell\s+me\s+about|tell\s+about|tell\s+me)\s+',
+            r'\b(?:about|details?|info|information|everything|full|'
+            r'complete|my|the|a|an|contact|person|entry|record|profile)\b\s*',
             '', body, flags=re.IGNORECASE,
         ).strip()
-        body = re.sub(r'^who\s+is\s+', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'^about\s+', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'^(?:contact|person)\s+', '', body, flags=re.IGNORECASE).strip()
+
+        # Strip trailing context clauses
         body = re.sub(
-            r'^(?:details|info|information)\s+(?:for|about|on)\s+',
+            r"\s+(?:in|from|of|for|under)\s+(?:my|the|your)?\s*"
+            r"(?:contacts?|crm|database|system|directory|roster|list|address\s*book)?\s*$",
             '', body, flags=re.IGNORECASE,
         ).strip()
-        body = re.sub(r'\s+(?:contact|person)\s*$', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'\s+(?:details|info|information)\s*$', '', body, flags=re.IGNORECASE).strip()
-        return _extract_title(body)
+
+        # Trim punctuation and normalize whitespace
+        body = re.sub(r'^[\s"\'.,;:!?\-]+|[\s"\'.,;:!?\-]+$', '', body).strip()
+        body = re.sub(r'\s+', ' ', body).strip()
+
+        return body
 
     def _related_leads(self, contact, user):
         from leads.models import Lead
@@ -1782,12 +1837,15 @@ class ViewContactAction(BaseAction):
         if not name:
             return 'I need a contact name. Which contact would you like to view?'
 
+        from django.db.models import Q
         from contacts.models import Contact
 
         qs = user.contacts.all()
-        contact = qs.filter(full_name__icontains=name).first()
-        if not contact:
-            contact = qs.filter(full_name__iexact=name).first()
+        contact = qs.filter(
+            Q(full_name__icontains=name) |
+            Q(email__icontains=name) |
+            Q(phone__icontains=name)
+        ).first()
         if not contact:
             return f'I could not find a contact matching "{name}".'
 
@@ -1800,6 +1858,7 @@ class ViewContactAction(BaseAction):
             f'| **Phone**    | {contact.phone or "—"}',
             f'| **Company**  | {contact.company or "—"}',
             f'| **Position** | {contact.job_title or "—"}',
+            f'| **Tags**     | {contact.tags or "—"}',
             f'| **Notes**    | {contact.notes or "—"}',
             f'| **Created**  | {created}',
             f'| **Updated**  | {updated}',
@@ -2164,8 +2223,8 @@ class UpdateLeadAction(BaseAction):
     }
 
     def _parse(self, text):
-        """Parse text → ``{name, field, value}``."""
-        params = {}
+        """Parse text → ``{name, updates: [(field, value), ...]}``."""
+        params = {'updates': []}
         body = text
 
         # 1. Strip action verb
@@ -2178,25 +2237,43 @@ class UpdateLeadAction(BaseAction):
         # 2. Strip entity type
         body = re.sub(r'^(?:lead|prospect|deal)\s+', '', body, flags=re.IGNORECASE).strip()
 
-        # 3. Try field-value extraction
-        field, value, remaining = _parse_update_field_value(body, _LEAD_UPDATE_FIELDS)
-        if field:
-            params['field'] = field
-            params['value'] = value
-            params['name'] = remaining
+        keys = sorted(_LEAD_UPDATE_FIELDS.keys(), key=len, reverse=True)
+        field_alt = '|'.join(re.escape(k) for k in keys)
+
+        # 3a. Format "field of name to value" (single update)
+        m = re.search(
+            r'\b(' + field_alt + r')\s+of\s+(.+?)\s+(?:to|as)\s+(.+?)$',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            raw_field = m.group(1).lower()
+            params['updates'].append((_LEAD_UPDATE_FIELDS[raw_field], m.group(3).strip()))
+            params['name'] = _extract_title(m.group(2).strip())
             return params
 
-        # 4. Check for status-only patterns: "<lead> qualified/won/lost"
+        # 3b. Extract all "field value" / "field to value" / "field: value" pairs
+        pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*|\s+)(?=\S)'
+        matches = list(re.finditer(pair_re, body, flags=re.IGNORECASE))
+        if matches:
+            name_text = body[:matches[0].start()].strip()
+            params['name'] = _extract_title(name_text)
+            for i, m in enumerate(matches):
+                raw_field = m.group(1).lower()
+                val_start = m.end()
+                val_end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+                value = body[val_start:val_end].strip().rstrip('. ')
+                if value:
+                    params['updates'].append((_LEAD_UPDATE_FIELDS[raw_field], value))
+            return params
+
+        # 4. Fallback: check for status-only: "<name> qualified/won/lost/contacted"
         m = re.search(r'\b(qualified|won|lost|contacted)\b', body, flags=re.IGNORECASE)
         if m:
-            params['field'] = 'status'
-            params['value'] = m.group(1)
-            # Remove the status word to get the name
-            remaining_body = body[:m.start()].strip()
-            params['name'] = _extract_title(remaining_body)
+            params['updates'].append(('status', m.group(1)))
+            params['name'] = _extract_title(body[:m.start()].strip())
             return params
 
-        # 5. Remaining body is the name (no field-value identified)
+        # 5. No field-value identified — remaining body is just the name
         params['name'] = _extract_title(body)
         return params
 
@@ -2206,10 +2283,8 @@ class UpdateLeadAction(BaseAction):
         if not name:
             return 'I need a lead name to update. Which lead should I update?'
 
-        field = params.get('field', '')
-        value = params.get('value')
-
-        if not field or value is None:
+        updates = params.get('updates', [])
+        if not updates:
             return (
                 f'I found lead "{name}", but what would you like to change? '
                 f'You can update status, priority, source, company, email, phone, '
@@ -2228,14 +2303,21 @@ class UpdateLeadAction(BaseAction):
         if not lead:
             return f'I could not find a lead matching "{name}".'
 
-        try:
-            norm_field, norm_value = _normalise_lead_field_value(field, str(value), user)
-        except ValueError as e:
-            return str(e)
+        # Normalise and set all field values
+        changed = []
+        for field, raw_value in updates:
+            try:
+                norm_field, norm_value = _normalise_lead_field_value(
+                    field, str(raw_value), user,
+                )
+            except ValueError as e:
+                return str(e)
+            setattr(lead, norm_field, norm_value)
+            changed.append((norm_field, norm_value))
 
+        # Save once with all changes
         try:
             with transaction.atomic():
-                setattr(lead, norm_field, norm_value)
                 lead.full_clean()
                 lead.save()
                 lead.refresh_from_db()
@@ -2252,11 +2334,10 @@ class UpdateLeadAction(BaseAction):
             logger.exception('Failed to update lead for user=%s', user)
             return f'Failed to update lead: {e}'
 
-        readable_field = norm_field.replace('_', ' ').title()
-        lines = [
-            f'Lead **"{lead.lead_name}"** updated.',
-            f'{readable_field}: {norm_value}',
-        ]
+        lines = [f'Lead **"{lead.lead_name}"** updated.']
+        for norm_field, norm_value in changed:
+            readable = norm_field.replace('_', ' ').title()
+            lines.append(f'{readable}: {norm_value}')
         return '  \n'.join(lines)
 
     @staticmethod
@@ -2274,50 +2355,51 @@ class DeleteLeadAction(BaseAction):
     action_type = 'delete_lead'
     keywords = frozenset({'delete', 'remove', 'erase', 'cancel', 'lead', 'prospect', 'deal'})
     patterns = [
-        re.compile(r'(delete|remove|erase)\s+(lead|prospect|deal)'),
-        re.compile(r'(delete|remove|erase).*\b(lead|prospect|deal)\b'),
+        re.compile(r'(delete|remove|erase|cancel)\b'),
     ]
 
     def _parse(self, text):
         body = text
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:delete|remove|erase)\s+',
+            r'(?:delete|remove|erase|cancel)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(r'^(?:lead|prospect|deal)\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'\s+(?:lead|prospect|deal)\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?(?:crm|database|system|records)\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
         return _extract_title(body)
 
     def execute(self, text, user):
         lead_name = self._parse(text)
         if not lead_name:
-            return 'I need a lead name to delete. Which lead should I delete?'
+            return 'Lead not found.'
 
         from leads.models import Lead
 
         qs = user.leads.all()
-        matches = list(qs.filter(lead_name__icontains=lead_name))
-        if len(matches) == 0:
-            return f'I could not find a lead matching "{lead_name}".'
-        if len(matches) > 1:
-            names = '\n'.join(f'  {i+1}. **{l.lead_name}**' for i, l in enumerate(matches))
-            return (
-                f'I found multiple leads matching "{lead_name}":\n'
-                f'{names}\n'
-                f'Please specify which one you want to delete.'
-            )
+        lead = qs.filter(lead_name__icontains=lead_name).first()
+        if not lead:
+            lead = qs.filter(lead_name__iexact=lead_name).first()
+        if not lead:
+            return 'Lead not found.'
 
-        lead = matches[0]
+        from django.db import transaction
         try:
-            from django.db import transaction
             with transaction.atomic():
                 lead.delete()
         except Exception as e:
             logger.exception('Failed to delete lead for user=%s', user)
             return f'Failed to delete lead: {e}'
 
-        return f'Lead **"{lead_name}"** has been deleted.'
+        # Verify deletion
+        if Lead.objects.filter(pk=lead.pk).exists():
+            return 'Failed to delete lead.'
+
+        return 'Lead deleted successfully.'
 
 
 @register
@@ -2329,8 +2411,9 @@ class ViewLeadAction(BaseAction):
     })
     patterns = [
         re.compile(r'(show|view|open).*(lead|prospect|deal)'),
-        re.compile(r'(lead|prospect|deal).*(details|info|information)'),
+        re.compile(r'(lead|prospect|deal).*(details|info|information|about)'),
         re.compile(r'(tell|show).*(about).*(lead|prospect|deal)'),
+        re.compile(r'^(lead|prospect|deal)\b'),
     ]
 
     def _parse(self, text):
@@ -2347,11 +2430,11 @@ class ViewLeadAction(BaseAction):
         body = re.sub(r'^about\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'^(?:lead|prospect|deal)\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(
-            r'^(?:details|info|information)\s+(?:for|about|on)\s+',
+            r'^(?:details?|info|information)(?:\s+(?:for|about|on)\s+|\s+)',
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(r'\s+(?:lead|prospect|deal)\s*$', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'\s+(?:details|info|information)\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'\s+(?:details?|info|information)\s*$', '', body, flags=re.IGNORECASE).strip()
         return _extract_title(body)
 
     def execute(self, text, user):
@@ -2370,6 +2453,8 @@ class ViewLeadAction(BaseAction):
 
         revenue = f'${lead.expected_revenue:,.2f}' if lead.expected_revenue else '—'
         assigned_to = lead.assigned_user.get_full_name() or str(lead.assigned_user) if lead.assigned_user else '—'
+        created = lead.created_at.strftime('%b %d, %Y') if lead.created_at else '—'
+        updated = lead.updated_at.strftime('%b %d, %Y') if lead.updated_at else '—'
 
         rows = [
             f'| **Name**            | {lead.lead_name}',
@@ -2377,10 +2462,12 @@ class ViewLeadAction(BaseAction):
             f'| **Phone**           | {lead.phone or "—"}',
             f'| **Status**          | {lead.get_status_display()}',
             f'| **Priority**        | {lead.get_priority_display()}',
-            f'| **Expected Revenue**| {revenue}',
             f'| **Source**          | {lead.get_source_display()}',
+            f'| **Expected Revenue**| {revenue}',
+            f'| **Assigned To**     | {assigned_to}',
             f'| **Notes**           | {lead.notes or "—"}',
-            f'| **Owner**           | {assigned_to}',
+            f'| **Created**         | {created}',
+            f'| **Updated**         | {updated}',
         ]
         table = '\n'.join(rows)
         return f'### Lead Details\n{table}'
@@ -2691,6 +2778,10 @@ class UpdateEventAction(BaseAction):
     patterns = [
         re.compile(r'(update|edit|change|modify|reschedule|move).*(event|meeting|appointment|call|reminder)'),
         re.compile(r'(event|meeting|appointment).*(?:to|as)\s+(?:\d|\w+)'),
+        re.compile(r'(move|reschedule)\s+'),
+        re.compile(r'(change|update|set|modify)\s+(?:the\s+)?'
+                   r'(?:time|date|location|status|type|description|title|name|link|'
+                   r'end\s*time|start\s*time)\b'),
     ]
 
     def _parse(self, text):
@@ -2706,9 +2797,26 @@ class UpdateEventAction(BaseAction):
         ).strip()
 
         # 2. Strip entity type
-        body = re.sub(r'^(?:event|meeting|appointment|call|reminder)\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'^(?:event|meeting|appointment|call|reminder)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
 
-        # 3. Try field-value extraction
+        # 3. Try direct field-value extraction (supports plain "field value")
+        keys = sorted(_EVENT_UPDATE_FIELDS.keys(), key=len, reverse=True)
+        field_alt = '|'.join(re.escape(k) for k in keys)
+        m = re.search(
+            r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*|\s+)(.+?)$',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            raw_field = m.group(1).lower()
+            params['field'] = _EVENT_UPDATE_FIELDS[raw_field]
+            params['value'] = m.group(2).strip()
+            params['identifier'] = _extract_title(body[:m.start()])
+            return params
+
+        # 4. Try _parse_update_field_value for possessive / "as" formats
         field, value, remaining = _parse_update_field_value(body, _EVENT_UPDATE_FIELDS)
         if field:
             params['field'] = field
@@ -2716,14 +2824,12 @@ class UpdateEventAction(BaseAction):
             params['identifier'] = remaining
             return params
 
-        # 4. For "move/reschedule <event> to <time/date>":
-        #    The value is a time or date, the field is implied
+        # 5. For "move/reschedule <event> to <time/date>":
         #    Try time first
         t, time_body = _parse_time_from_text(body)
         if t:
             params['field'] = 'start_time'
             params['value'] = t
-            # Remove the time and any "to/at" from body to get identifier
             cleaned = re.sub(r'\b(?:to|at)\s+', '', time_body, flags=re.IGNORECASE).strip()
             params['identifier'] = _extract_title(cleaned)
             return params
@@ -2737,16 +2843,22 @@ class UpdateEventAction(BaseAction):
             params['identifier'] = _extract_title(cleaned)
             return params
 
-        # 5. Check for status word at end
-        m = re.search(r'\b(as\s+)?(completed|done|finished|cancelled|scheduled)\s*$', body, flags=re.IGNORECASE)
+        # 6. Check for status word at end
+        m = re.search(
+            r'\b(as\s+)?(completed|done|finished|cancelled|scheduled)\s*$',
+            body, flags=re.IGNORECASE,
+        )
         if m:
             params['field'] = 'status'
             params['value'] = m.group(2)
             params['identifier'] = _extract_title(body[:m.start()])
             return params
 
-        # 6. Check for "to <time>" pattern (without explicit field)
-        m = re.search(r'\b(?:to|at)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b', body, flags=re.IGNORECASE)
+        # 7. Check for "to <time>" pattern (without explicit field)
+        m = re.search(
+            r'\b(?:to|at)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b',
+            body, flags=re.IGNORECASE,
+        )
         if m:
             from datetime import time as time_class
             hour = int(m.group(1))
@@ -2765,7 +2877,7 @@ class UpdateEventAction(BaseAction):
             except ValueError:
                 pass
 
-        # 7. No field-value — body is the identifier
+        # 8. No field-value — body is the identifier
         params['identifier'] = _extract_title(body)
         return params
 
@@ -2890,11 +3002,15 @@ class DeleteEventAction(BaseAction):
         body = text
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:delete|remove|cancel|erase)\s+',
+            r'(?:delete|remove|erase|cancel)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(r'^(?:event|meeting|appointment)\s+', '', body, flags=re.IGNORECASE).strip()
-        # Keep entity type at end (e.g. "tomorrow's meeting" stays intact)
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?(?:event|meeting|appointment|calendar|model|database|system)'
+            r'(?:\s+(?:event|meeting|appointment|calendar|model|database|system))*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
         return _extract_title(body)
 
     def _find_event(self, identifier, user):
@@ -2950,15 +3066,19 @@ class DeleteEventAction(BaseAction):
         if not event:
             return f'I could not find an event matching "{identifier}".'
 
+        from django.db import transaction
         try:
-            from django.db import transaction
             with transaction.atomic():
                 event.delete()
         except Exception as e:
             logger.exception('Failed to delete event for user=%s', user)
             return f'Failed to delete event: {e}'
 
-        return f'Event **"{event.title}"** has been cancelled.'
+        # Verify deletion
+        if Event.objects.filter(pk=event.pk).exists():
+            return 'Failed to delete event.'
+
+        return f'Event **"{event.title}"** has been deleted.'
 
 
 @register
@@ -2978,7 +3098,7 @@ class ViewEventAction(BaseAction):
         body = text
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:show|view|open)\s+',
+            r'(?:show\s+(?:me\s+)?|view\s+|open\s+|see\s+|display\s+)',
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(
@@ -2988,13 +3108,29 @@ class ViewEventAction(BaseAction):
         body = re.sub(r'^about\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'^(?:event|meeting|appointment)\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(
-            r'^(?:details|info|information)\s+(?:for|about|on)\s+',
+            r'^(?:details?|info|information)(?:\s+(?:for|about|on)\s+|\s+)',
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(r'\s+(?:event|meeting|appointment)\s*$', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'\s+(?:details|info|information)\s*$', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r"^(tomorrow|today)(?:'s|s)\s+", '', body, flags=re.IGNORECASE).strip()
-        return _extract_title(body)
+        body = re.sub(r'\s+(?:details?|info|information)\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'^(?:details?|info|information)\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'^(?:(?:my|the|a|an)\s+)?(?:event|meeting|appointment)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r'^(?:in|from|of|for|on)\s+(?:my|the|your)?\s*'
+            r'(?:calendar|schedule|event|meeting|appointment)\s*',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r"\s+(?:in|from|of|for|on)\s+(?:my|the|your)?\s*"
+            r"(?:calendars?|schedule|events?|meetings?|appointments?)?\s*$",
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(r'^[\s"\'.,;:!?\-]+|[\s"\'.,;:!?\-]+$', '', body).strip()
+        body = re.sub(r'\s+', ' ', body).strip()
+        return body
 
     def _find_event(self, identifier, user):
         from calendars.models import Event
@@ -3037,14 +3173,19 @@ class ViewEventAction(BaseAction):
         start_time = event.start_time.strftime('%I:%M %p').lstrip('0') if event.start_time else '—'
         end_time = event.end_time.strftime('%I:%M %p').lstrip('0') if event.end_time else '—'
         time_str = f'{start_time} – {end_time}' if event.start_time else '—'
+        created = event.created_at.strftime('%b %d, %Y') if event.created_at else '—'
+        updated = event.updated_at.strftime('%b %d, %Y') if event.updated_at else '—'
 
         rows = [
-            f'| **Title**  | {event.title}',
-            f'| **Date**   | {start_date}',
-            f'| **Time**   | {time_str}',
-            f'| **Location**| {event.location or "—"}',
-            f'| **Type**   | {event.get_event_type_display()}',
-            f'| **Status** | {event.get_status_display()}',
+            f'| **Title**      | {event.title}',
+            f'| **Date**       | {start_date}',
+            f'| **Time**       | {time_str}',
+            f'| **Location**   | {event.location or "—"}',
+            f'| **Type**       | {event.get_event_type_display()}',
+            f'| **Status**     | {event.get_status_display()}',
+            f'| **Description**| {event.description or "—"}',
+            f'| **Created**    | {created}',
+            f'| **Updated**    | {updated}',
         ]
         table = '\n'.join(rows)
         return f'### Event Details\n{table}'
@@ -3791,3 +3932,359 @@ class CreateWorkflowAction(BaseAction):
             if phrase in val_lower or val_lower in phrase:
                 return mapped
         return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  modify_anything — catch-all update / delete / cancel
+# ═══════════════════════════════════════════════════════════════════════════
+
+@register
+class ModifyAnythingAction(BaseAction):
+    """Catch-all for update/delete/cancel patterns that specific actions miss
+    (e.g. plural entity names like "contacts" / "tasks", indirect references
+    like "change company of John").
+    """
+
+    action_type = 'modify_anything'
+    keywords = frozenset({
+        'update', 'edit', 'change', 'modify', 'set', 'rename',
+        'delete', 'remove', 'erase', 'cancel',
+    })
+    patterns = [
+        # Any text containing an update verb
+        re.compile(r'\b(?:update|edit|change|modify|set|rename|delete|remove|erase|cancel)\b'),
+        # "I want to ..."
+        re.compile(r'\bi\s+(?:want\s+)?(?:to\s+)?(?:update|edit|change|modify|set|rename|delete|remove|erase|cancel)\b'),
+        # Possessive "<name>'s <attr> to <value>"
+        re.compile(r"'s\s+(?:phone|email|company|status|priority|name|title|number)\s+(?:to|as)\b"),
+    ]
+
+    _ENTITY_MAP = {
+        'contact': ('contacts', 'full_name'),
+        'person': ('contacts', 'full_name'),
+        'lead': ('leads', 'lead_name'),
+        'prospect': ('leads', 'lead_name'),
+        'deal': ('leads', 'lead_name'),
+        'task': ('tasks', 'title'),
+        'event': ('events', 'title'),
+        'meeting': ('events', 'title'),
+        'appointment': ('events', 'title'),
+        'reminder': ('events', 'title'),
+        'campaign': ('campaigns', 'name'),
+        'workflow': ('workflows', 'name'),
+        'notification': ('notifications', 'title'),
+        'alert': ('notifications', 'title'),
+    }
+
+    _QUERYSET_BUILDERS = {
+        'contacts': lambda u: u.contacts.all(),
+        'leads': lambda u: u.leads.all(),
+        'tasks': lambda u: u.tasks.all(),
+        'events': lambda u: u.events.all(),
+        'campaigns': lambda u: u.campaigns.all(),
+        'workflows': lambda u: u.workflows.all() if hasattr(u, 'workflows') else None,
+        'notifications': lambda u: u.notifications.all() if hasattr(u, 'notifications') else None,
+    }
+
+    _NAME_FIELDS = {
+        'contacts': 'full_name',
+        'leads': 'lead_name',
+        'tasks': 'title',
+        'events': 'title',
+        'campaigns': 'name',
+        'workflows': 'name',
+        'notifications': 'title',
+    }
+
+
+    # ── helpers ──
+
+    @staticmethod
+    def _strip_prefix(text):
+        body = text
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:update|edit|change|modify|set|rename|'
+            r'delete|remove|erase|cancel)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(r'^(?:the|my|this|that|a|an)\s+', '', body, flags=re.IGNORECASE).strip()
+        return body
+
+    @staticmethod
+    def _get_queryset(user, rel):
+        builder = ModifyAnythingAction._QUERYSET_BUILDERS.get(rel)
+        if builder:
+            return builder(user)
+        return None
+
+    @staticmethod
+    def _get_name_field(rel):
+        return ModifyAnythingAction._NAME_FIELDS.get(rel, 'title')
+
+    @staticmethod
+    def _is_delete(text_lower):
+        return bool(re.search(r'\b(?:delete|remove|erase|cancel)\b', text_lower))
+
+    @staticmethod
+    def _is_update(text_lower):
+        return bool(re.search(r'\b(?:update|edit|change|modify|set|rename)\b', text_lower))
+
+    @staticmethod
+    def _is_question(text_lower):
+        """Return True if *text_lower* looks like a question, not a command."""
+        return bool(re.search(
+            r'\b(?:how\s+(?:do|can|should|would|will|to|does)'
+            r'|what\s+(?:is|are|does|do)'
+            r'|can\s+you'
+            r'|tell\s+(?:me|us)\s+(?:how|what|about))',
+            text_lower,
+        ))
+
+    @staticmethod
+    def _normalise_value(field, value, entity_type):
+        """Map raw value strings to model-choice-friendly values."""
+        val_lower = value.strip().lower()
+
+        # Status normalisation
+        status_map = {
+            'contacts': {
+                'active': 'active', 'inactive': 'inactive',
+            },
+            'leads': {
+                'new': 'New', 'contacted': 'Contacted',
+                'qualified': 'Qualified', 'proposal': 'Proposal Sent',
+                'proposal sent': 'Proposal Sent',
+                'negotiation': 'Negotiation',
+                'won': 'Won', 'lost': 'Lost',
+            },
+            'tasks': {
+                'pending': 'pending', 'in progress': 'in_progress',
+                'in progress': 'in_progress', 'completed': 'completed',
+                'done': 'completed', 'finished': 'completed',
+                'cancelled': 'cancelled',
+            },
+            'events': {
+                'scheduled': 'Scheduled', 'completed': 'Completed',
+                'cancelled': 'Cancelled', 'rescheduled': 'Rescheduled',
+            },
+        }
+        if field == 'status':
+            mapping = status_map.get(entity_type, {})
+            if val_lower in mapping:
+                return mapping[val_lower]
+            return value
+
+        # Priority normalisation
+        priority_map = {
+            'high': 'High', 'medium': 'Medium', 'low': 'Low',
+        }
+        if field == 'priority' and val_lower in priority_map:
+            return priority_map[val_lower]
+
+        return value
+
+    @staticmethod
+    def _extract_field_value_for_entity(body, entity_type):
+        """Try to extract ``(field, value)`` from *body* for *entity_type*."""
+        # Phone
+        m = re.search(r'(\+?\d[\d\s\-().]{6,20}\d)\b', body)
+        if m:
+            return ('phone', m.group(1).strip())
+        # Email
+        m = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b', body)
+        if m:
+            return ('email', m.group(1).lower())
+
+        # Status / priority keywords
+        for pat, field, vals in [
+            (r'\b(?:qualified|won|lost|new|contacted)\b', 'status',
+             ['new', 'contacted', 'qualified', 'won', 'lost']),
+            (r'\b(?:high|medium|low)\b', 'priority',
+             ['high', 'medium', 'low']),
+            (r'\b(?:completed|done|finished|pending|cancelled|active)\b', 'status',
+             ['completed', 'done', 'finished', 'pending', 'cancelled', 'active']),
+        ]:
+            m = re.search(pat, body, re.IGNORECASE)
+            if m:
+                val = m.group(0).lower()
+                norm = {
+                    'done': 'completed', 'finished': 'completed',
+                }
+                return (field, norm.get(val, val))
+
+        field_map = {
+            'contacts': _CONTACT_UPDATE_FIELDS,
+            'leads': _LEAD_UPDATE_FIELDS,
+            'tasks': _TASK_UPDATE_FIELDS,
+            'events': _EVENT_UPDATE_FIELDS,
+        }.get(entity_type)
+
+        if field_map:
+            keys = sorted(field_map.keys(), key=len, reverse=True)
+            field_alt = '|'.join(re.escape(k) for k in keys)
+
+            # Pattern A: "<attr> to <value>" (simple, e.g. "company to MegaCorp")
+            m = re.search(
+                r'\b(' + field_alt + r')\s+(?:to|as)\s+(.+)', body, re.IGNORECASE,
+            )
+            if m:
+                raw_field = m.group(1).lower()
+                value = m.group(2).strip()
+                norm_field = field_map.get(raw_field)
+                if norm_field:
+                    return (norm_field, value)
+
+            # Pattern B: "<attr> of <entity> to <value>" (e.g. "company of John to Acme")
+            m = re.search(
+                r'\b(' + field_alt + r')\s+(?:of|for)\s+'
+                r'.*?\s+(?:to|as)\s+(.+)',
+                body, re.IGNORECASE,
+            )
+            if m:
+                raw_field = m.group(1).lower()
+                value = m.group(2).strip()
+                norm_field = field_map.get(raw_field)
+                if norm_field:
+                    return (norm_field, value)
+
+        return (None, None)
+
+    # ── Name extraction pipeline ──
+
+    def _clean_name_body(self, text):
+        """Strip prefix, attribute phrases, entity words, and trailing
+        prepositions from *text* to extract a candidate entity name."""
+        body = self._strip_prefix(text)
+
+        # 1) Strip trailing "to <value>" / "as <value>"
+        body = re.sub(
+            r'\s+(?:to|as)\s+\S+(?:\s+\S+)*\s*$', '', body,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        # 2) Strip attribute-field phrase (e.g. "company of John" → "John")
+        body = re.sub(
+            r'\b(?:name|title|status|priority|phone|email|company|'
+            r'date|time|location|description|number)\s+(?:of|for)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        # 3) Strip possessive "'s" and trailing noise words
+        body = re.sub(r"'s\b", '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\b(?:the|my|this|that|a|an|phone|email|company|status|'
+            r'priority|name|title|number)\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        # 4) Strip entity-type words
+        body = re.sub(
+            r'\b(?:contacts?|leads?|tasks?|events?|meetings?|'
+            r'campaigns?|appointments?|reminders?|persons?|'
+            r'workflows?|notifications?|alerts?)\b',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        # 5) Strip trailing prepositions + remainder
+        body = re.sub(
+            r'\b(?:from|in|of|to|at|for)\b.*$', '', body,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        return body
+
+    # ── execute ──
+
+    def execute(self, text, user):
+        if not user or not user.is_authenticated:
+            return None
+
+        text_lower = text.lower().strip()
+
+        # Don't interfere with questions
+        if self._is_question(text_lower):
+            return None
+
+        is_delete = self._is_delete(text_lower)
+        is_update = self._is_update(text_lower)
+        if not is_delete and not is_update:
+            return None
+
+        from django.db.models import Q
+
+        # ── Extract candidate name ──
+        name_body = self._clean_name_body(text)
+        if not name_body:
+            return 'I need to know which item to modify.'
+
+        # ── Search every entity type ──
+        seen = set()
+        candidates = []
+        for rel_key, name_fld in self._NAME_FIELDS.items():
+            if rel_key in seen:
+                continue
+            seen.add(rel_key)
+            qs = self._get_queryset(user, rel_key)
+            if qs is None:
+                continue
+            for m in qs.filter(Q(**{f'{name_fld}__icontains': name_body}))[:3]:
+                candidates.append((rel_key, m))
+
+        if len(candidates) == 0:
+            return f'I could not find anything matching **"{name_body}"**.'
+        if len(candidates) > 1:
+            lines = [f'I found multiple matches for **"{name_body}"**:']
+            for rel_key, m in candidates:
+                nf = self._get_name_field(rel_key)
+                lines.append(
+                    f'- **{getattr(m, nf)}** ({rel_key.rstrip("s")})'
+                )
+            lines.append('Please specify which one you want to modify.')
+            return '\n'.join(lines)
+
+        rel, obj = candidates[0]
+        name_field = self._get_name_field(rel)
+        obj_name = getattr(obj, name_field)
+        label = rel.rstrip('s')
+
+        # ── DELETE ──
+        if is_delete:
+            from django.db import transaction
+            try:
+                with transaction.atomic():
+                    obj.delete()
+            except Exception as e:
+                logger.exception('Failed to delete %s for user=%s', label, user)
+                return f'Failed to delete {label}: {e}'
+            return f'{label.title()} **"{obj_name}"** has been deleted.'
+
+        # ── UPDATE ──
+        field, value = self._extract_field_value_for_entity(text, rel)
+        if field and value is not None:
+            from django.db import transaction
+            from django.core.exceptions import ValidationError
+            value = self._normalise_value(field, value, rel)
+            try:
+                with transaction.atomic():
+                    setattr(obj, field, value)
+                    obj.full_clean()
+                    obj.save()
+            except ValidationError as e:
+                errors = []
+                for fld, errs in e.message_dict.items():
+                    for err in errs:
+                        errors.append(f'{fld}: {err}')
+                return 'Validation error(s):\n' + '\n'.join(errors)
+            except Exception as e:
+                logger.exception('Failed to update %s for user=%s', label, user)
+                return f'Failed to update {label}: {e}'
+            return (
+                f'{label.title()} **"{obj_name}"** updated.\n'
+                f'{field.replace("_", " ").title()}: {value}'
+            )
+
+        return (
+            f'I found {label} **"{obj_name}"**. '
+            f'What would you like to change?'
+        )
