@@ -115,19 +115,34 @@ class ActionLayer:
         'create_notification': r'\bnotification\b|\balert\b',
         'create_workflow': r'\bworkflow\b|\bautomation\b|\brule\b',
         'delete_contact': r'\bcontact\b|\bperson\b',
-        'delete_lead': r'\blead\b|\bprospect\b|\bdeal\b',
-        'delete_task': r'\btask\b',
-        'delete_event': r'\bevent\b|\bmeeting\b|\bappointment\b',
-        'delete_campaign': r'\bcampaign\b',
+        'delete_lead': r'\bleads?\b|\bprospects?\b|\bdeals?\b',
+        'delete_task': r'\btasks?\b',
+        'delete_event': r'\bevents?\b|\bmeetings?\b|\bappointments?\b',
+        'delete_campaign': r'\bcampaigns?\b',
         'update_contact': r'\bcontact\b|\bperson\b',
-        'update_lead': r'\blead\b|\bprospect\b|\bdeal\b',
-        'update_event': r'\bevent\b|\bmeeting\b|\bappointment\b|' + 
-                        r'\blocation\b|\btime\b|\bdate\b|\bstatus\b|\btype\b',
+        'update_lead': r'\bleads?\b|\bprospects?\b|\bdeals?\b',
+        'update_task': r'\btasks?\b|\bto-?do\b',
+        'update_event': r'\bevents?\b|\bmeetings?\b|\bappointments?\b|' + 
+                        r'\blocation\b|\btime\b|\bdate\b|\bstatus\b|\btype\b|'
+                        r'\b(?:am|pm)\b',
         'compose_email': r'\bemail\b|\bmail\b|\bcompose\b|\bdraft\b',
-        'view_contact': r'\bcontact\b|\bperson\b',
-        'view_lead': r'\blead\b|\bprospect\b|\bdeal\b',
-        'view_task': r'\btask\b|\bto-?do\b',
-        'view_event': r'\bevent\b|\bmeeting\b|\bappointment\b',
+        'view_contact': r'\bcontacts?\b|\bpersons?\b',
+        'view_lead': r'\bleads?\b|\bprospects?\b|\bdeals?\b',
+        'view_task': r'\btasks?\b|\bto-?dos?\b',
+        'view_event': r'\bevents?\b|\bmeetings?\b|\bappointments?\b|\bcalendar\b|\bschedule\b',
+        'view_campaign': r'\bcampaigns?\b',
+        'update_campaign': r'\bcampaigns?\b|' +
+                           r'\bname\b|\bsubject\b|\bstatus\b|\bbody\b|'
+                           r'\bcontent\b|\bschedule\b',
+        'view_workflow': r'\bworkflows?\b|\bautomations?\b|\brules?\b',
+        'update_workflow': r'\bworkflows?\b|\bautomations?\b|\brules?\b|' +
+                          r'\bname\b|\bstatus\b|\bactive\b|\btrigger\b|'
+                          r'\bdescription\b',
+        'delete_workflow': r'\bworkflows?\b|\bautomations?\b|\brules?\b',
+        'view_notification': r'\bnotifications?\b|\balerts?\b',
+        'update_notification': r'\bnotifications?\b|\balerts?\b|' +
+                              r'\bmark\b|\bread\b|\bunread\b|\bpriority\b',
+        'delete_notification': r'\bnotifications?\b|\balerts?\b',
         'analytics': r'\bhow\s+many\b|\bcount\b|\btotal\b|\bnumber\s+of\b|\bhow\s+much\b|\brevenue\b',
         'crm_insights': r'\bsummary\b|\binsight\b|\bpriorit|\brecommend|\burgen|\boverdue\b|\bfocus\b|\bwhat\s+should\b|\bhow\s+is\b',
         'smart_actions': r'\b(?:meeting|meet|follow.?up|prepare|launch|notify|when|remind|and\s+(?:then|also|create|schedule|notify))\b',
@@ -224,6 +239,27 @@ class ActionLayer:
         if events:
             results.append(('Event', events))
 
+        # Campaigns
+        campaigns = list(user.campaigns.filter(
+            Q(name__icontains=query)
+        )[:5])
+        if campaigns:
+            results.append(('Campaign', campaigns))
+
+        # Workflows
+        workflows = list(user.workflows.filter(
+            Q(name__icontains=query)
+        )[:5])
+        if workflows:
+            results.append(('Workflow', workflows))
+
+        # Notifications
+        notifications = list(user.notifications.filter(
+            Q(title__icontains=query)
+        )[:5])
+        if notifications:
+            results.append(('Notification', notifications))
+
         if not results:
             return None
 
@@ -247,6 +283,44 @@ class ActionLayer:
             'You can say the number or the name.'
         )
         return '\n'.join(lines)
+
+
+def _is_entity_list_ref(name, ref_set):
+    if not name:
+        return False
+    cleaned = re.sub(r'^(?:my|the|a|an|all)\s+', '', name.lower().strip()).strip()
+    return cleaned in ref_set
+
+
+def _build_entity_list(qs, name_field, status_field=None, status_fn=None):
+    items = list(qs.order_by('-created_at'))
+    if not items:
+        return 'You have no items yet.'
+    lines = []
+    for i, obj in enumerate(items, 1):
+        label = getattr(obj, name_field, str(obj))
+        if status_fn:
+            extra = status_fn(obj)
+        elif status_field:
+            extra = getattr(obj, status_field, '')
+        else:
+            extra = ''
+        if extra:
+            lines.append(f'{i}. **{label}** - {extra}')
+        else:
+            lines.append(f'{i}. **{label}**')
+    return '\n'.join(lines)
+
+
+_ENTITY_LIST_REFS = {
+    'view_task': frozenset({'task', 'tasks', 'to-do', 'to-dos', 'todo', 'todos'}),
+    'view_contact': frozenset({'contact', 'contacts', 'person', 'persons', 'people'}),
+    'view_lead': frozenset({'lead', 'leads', 'prospect', 'prospects', 'deal', 'deals'}),
+    'view_event': frozenset({'event', 'events', 'meeting', 'meetings', 'appointment', 'appointments', 'calendar'}),
+    'view_campaign': frozenset({'campaign', 'campaigns'}),
+    'view_workflow': frozenset({'workflow', 'workflows', 'automation', 'automations', 'rule', 'rules'}),
+    'view_notification': frozenset({'notification', 'notifications', 'alert', 'alerts'}),
+}
 
 
 # ===========================================================================
@@ -501,12 +575,23 @@ def _extract_priority(text):
 def _extract_title(text):
     """Extract a meaningful title from the remaining message text."""
     text = re.sub(r'\s+', ' ', text).strip()
-    # Strip leading/trailing punctuation
-    text = re.sub(r'^[:\-;.,\s]+', '', text).strip()
-    text = re.sub(r'[:\-;.,\s]+$', '', text).strip()
+    # Strip leading/trailing punctuation (including quotes)
+    text = re.sub(r'^[\'\"`:\-;.,\s]+', '', text).strip()
+    text = re.sub(r'[\'\"`:\-;.,\s]+$', '', text).strip()
     # Remove trailing prepositions / noise
     text = re.sub(r'\b(due|by|on|at|for|to|with|about)\s*$', '', text, flags=re.IGNORECASE).strip()
     return text
+
+
+def _strip_leading_noise(text):
+    """Strip leading prepositions/articles/possessives/demonstratives that may appear between verb and entity.
+    
+    Handles sequences, e.g. ``"from the campaign"`` → ``"campaign"``.
+    """
+    return re.sub(
+        r'^(?:(?:from|for|about|regarding|the|a|an|my|your|our|this|that|these|those)\s+)+',
+        '', text, flags=re.IGNORECASE,
+    ).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -558,6 +643,31 @@ _EVENT_UPDATE_FIELDS = {
     'type': 'event_type', 'event type': 'event_type',
     'description': 'description',
     'meeting link': 'meeting_link', 'link': 'meeting_link', 'url': 'meeting_link',
+}
+
+_CAMPAIGN_UPDATE_FIELDS = {
+    'name': 'name',
+    'subject': 'subject',
+    'body': 'body', 'content': 'body', 'description': 'body',
+    'status': 'status',
+    'scheduled at': 'scheduled_at', 'scheduled_at': 'scheduled_at',
+    'scheduled date': 'scheduled_at', 'scheduled time': 'scheduled_at',
+    'schedule': 'scheduled_at', 'date': 'scheduled_at', 'time': 'scheduled_at',
+}
+
+_NOTIFICATION_UPDATE_FIELDS = {
+    'title': 'title',
+    'message': 'message', 'msg': 'message', 'content': 'message',
+    'link': 'link',
+    'read': 'is_read', 'status': 'is_read',
+    'priority': 'priority',
+}
+
+_WORKFLOW_UPDATE_FIELDS = {
+    'name': 'name',
+    'description': 'description', 'desc': 'description',
+    'status': 'is_active', 'active': 'is_active', 'enabled': 'is_active',
+    'trigger': 'trigger_type', 'trigger type': 'trigger_type',
 }
 
 
@@ -841,6 +951,12 @@ class SearchAction(BaseAction):
             return f'{obj.title}  ({obj.get_status_display()})'
         if type_label == 'Event':
             return f'{obj.title}  ({obj.start_date})'
+        if type_label == 'Campaign':
+            return f'{obj.name}  ({obj.get_status_display()})'
+        if type_label == 'Workflow':
+            return f'{obj.name}  ({"Active" if obj.is_active else "Inactive"})'
+        if type_label == 'Notification':
+            return f'{obj.title}  ({"Read" if obj.is_read else "Unread"})'
         return str(obj)
 
     @staticmethod
@@ -902,6 +1018,37 @@ class SearchAction(BaseAction):
                 f'| **Status** | {obj.get_status_display()}',
             ]
             return '### Event Details\n' + '\n'.join(rows)
+        if type_label == 'Campaign':
+            scheduled = obj.scheduled_at.strftime('%b %d, %Y at %I:%M %p') if obj.scheduled_at else '—'
+            rows = [
+                f'| **Name**    | {obj.name}',
+                f'| **Status**  | {obj.get_status_display()}',
+                f'| **Subject** | {obj.subject or "—"}',
+                f'| **Body**    | {obj.body[:500] if obj.body else "—"}',
+                f'| **Scheduled**| {scheduled}',
+                f'| **Created** | {obj.created_at.strftime("%b %d, %Y") if obj.created_at else "—"}',
+            ]
+            return '### Campaign Details\n' + '\n'.join(rows)
+        if type_label == 'Workflow':
+            actions_list = ', '.join(a.get_action_type_display() for a in obj.actions.all()) if obj.actions.exists() else '—'
+            rows = [
+                f'| **Name**     | {obj.name}',
+                f'| **Status**   | {"Active" if obj.is_active else "Inactive"}',
+                f'| **Trigger**  | {obj.get_trigger_type_display()}',
+                f'| **Description**| {obj.description[:500] if obj.description else "—"}',
+                f'| **Actions**  | {actions_list}',
+                f'| **Created**  | {obj.created_at.strftime("%b %d, %Y") if obj.created_at else "—"}',
+            ]
+            return '### Workflow Details\n' + '\n'.join(rows)
+        if type_label == 'Notification':
+            rows = [
+                f'| **Title**   | {obj.title}',
+                f'| **Status**  | {"Read" if obj.is_read else "Unread"}',
+                f'| **Message** | {obj.message[:500] if obj.message else "—"}',
+                f'| **Link**    | {obj.link or "—"}',
+                f'| **Created** | {obj.created_at.strftime("%b %d, %Y at %I:%M %p") if obj.created_at else "—"}',
+            ]
+            return '### Notification Details\n' + '\n'.join(rows)
         return str(obj)
 
     def _parse(self, text):
@@ -916,7 +1063,7 @@ class SearchAction(BaseAction):
     def execute(self, text, user):
         query = self._parse(text)
         if not query:
-            return 'What would you like to search for? I can search contacts, leads, tasks, and events.'
+            return 'What would you like to search for? I can search contacts, leads, tasks, events, campaigns, workflows, and notifications.'
 
         from django.db.models import Q
 
@@ -946,8 +1093,26 @@ class SearchAction(BaseAction):
         if events:
             results.append(('Event', events))
 
+        campaigns = list(user.campaigns.filter(
+            Q(name__icontains=query)
+        )[:5])
+        if campaigns:
+            results.append(('Campaign', campaigns))
+
+        workflows = list(user.workflows.filter(
+            Q(name__icontains=query)
+        )[:5])
+        if workflows:
+            results.append(('Workflow', workflows))
+
+        notifications = list(user.notifications.filter(
+            Q(title__icontains=query)
+        )[:5])
+        if notifications:
+            results.append(('Notification', notifications))
+
         if not results:
-            return f'I could not find any contacts, leads, tasks, or events matching "{query}".'
+            return f'I could not find any contacts, leads, tasks, events, campaigns, workflows, or notifications matching "{query}".'
 
         total = sum(len(items) for _, items in results)
 
@@ -1134,7 +1299,7 @@ class UpdateTaskAction(BaseAction):
         'task', 'done', 'complete', 'finish',
     })
     patterns = [
-        re.compile(r'(update|edit|change|modify|rename|mark|set).*(task)'),
+        re.compile(r'\b(update|edit|change|modify|rename|mark|set)\b.*(task)'),
         re.compile(r'(task).*(as|to)\s+(completed|done|finished|pending|in.progress|in_progress)'),
     ]
 
@@ -1150,20 +1315,37 @@ class UpdateTaskAction(BaseAction):
             '', body, flags=re.IGNORECASE,
         ).strip()
 
+        # 1b. Strip leading prepositions/articles that may appear before entity
+        body = _strip_leading_noise(body)
+
         # 2. Strip entity type "task"
-        body = re.sub(r'^task\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'^tasks?\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?tasks?[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        # Insert ":" between bare field keywords and values ("status done" → "status: done")
+        _task_fk = '|'.join(re.escape(k) for k in _TASK_UPDATE_FIELDS.keys())
+        body = re.sub(
+            r'\b(' + _task_fk + r')\s+(?!(?:to|as|is|=|of)\s)(?=\S)',
+            r'\1: ', body, flags=re.IGNORECASE,
+        ).strip()
 
         # 3. Try field-value extraction
         field, value, remaining = _parse_update_field_value(body, _TASK_UPDATE_FIELDS)
         if field:
             params['field'] = field
             params['value'] = value
+            remaining = re.sub(r'\s+from\s+(?:the\s+)?tasks?[.,;:]*\s*$', '', remaining, flags=re.IGNORECASE).strip()
+            remaining = re.sub(r'\s+tasks?[.,;:]*\s*$', '', remaining, flags=re.IGNORECASE).strip()
             params['title'] = _extract_title(remaining)
             return params
 
         # 4. Fallback: extract date / time / priority from body
         d, body = _parse_date_from_text(body)
         if d:
+            body = re.sub(r'\s+from\s+(?:the\s+)?tasks?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+            body = re.sub(r'\s+tasks?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
             params['field'] = 'due_date'
             params['value'] = d
             params['title'] = _extract_title(body)
@@ -1171,6 +1353,8 @@ class UpdateTaskAction(BaseAction):
 
         priority, body = _extract_priority(body)
         if priority:
+            body = re.sub(r'\s+from\s+(?:the\s+)?tasks?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+            body = re.sub(r'\s+tasks?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
             params['field'] = 'priority'
             params['value'] = priority
             params['title'] = _extract_title(body)
@@ -1180,10 +1364,14 @@ class UpdateTaskAction(BaseAction):
         #    But first check for trailing status word
         m = re.search(r'\b(as\s+)?(completed|done|finished|pending|in.progress|in_progress)\s*$', body, flags=re.IGNORECASE)
         if m:
+            title_text = re.sub(r'\s+from\s+(?:the\s+)?tasks?[.,;:]*\s*$', '', body[:m.start()], flags=re.IGNORECASE).strip()
+            title_text = re.sub(r'\s+tasks?[.,;:]*\s*$', '', title_text, flags=re.IGNORECASE).strip()
             params['field'] = 'status'
             params['value'] = m.group(2)
-            params['title'] = _extract_title(body[:m.start()])
+            params['title'] = _extract_title(title_text)
         else:
+            body = re.sub(r'\s+from\s+(?:the\s+)?tasks?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+            body = re.sub(r'\s+tasks?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
             params['title'] = _extract_title(body)
 
         return params
@@ -1269,8 +1457,13 @@ class DeleteTaskAction(BaseAction):
             r'(?:delete|remove|erase|cancel)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
-        body = re.sub(r'^task\s+', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'\s+task\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = _strip_leading_noise(body)
+        body = re.sub(r'^tasks?\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?tasks?[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(r'\s+tasks?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
         return _extract_title(body)
 
     def execute(self, text, user):
@@ -1279,22 +1472,16 @@ class DeleteTaskAction(BaseAction):
             return 'I need a task title to delete. Which task should I delete?'
 
         from tasks.models import Task
+        from django.db import transaction
 
         qs = user.tasks.all()
-        matches = list(qs.filter(title__icontains=title))
-        if len(matches) == 0:
+        task = qs.filter(title__icontains=title).first()
+        if not task:
+            task = qs.filter(title__iexact=title).first()
+        if not task:
             return f'I could not find a task matching "{title}".'
-        if len(matches) > 1:
-            names = '\n'.join(f'  {i+1}. **{t.title}**' for i, t in enumerate(matches))
-            return (
-                f'I found multiple tasks matching "{title}":\n'
-                f'{names}\n'
-                f'Please specify which one you want to delete.'
-            )
 
-        task = matches[0]
         try:
-            from django.db import transaction
             with transaction.atomic():
                 task.delete()
         except Exception as e:
@@ -1347,6 +1534,14 @@ class ViewTaskAction(BaseAction):
         if not task:
             task = qs.filter(title__iexact=title).first()
         if not task:
+            if _is_entity_list_ref(title, _ENTITY_LIST_REFS['view_task']):
+                all_items = qs.order_by('-created_at')
+                if not all_items:
+                    return 'You have no tasks yet.'
+                lines = ['**Your Tasks:**']
+                for i, t in enumerate(all_items, 1):
+                    lines.append(f'{i}. **{t.title}** - {t.get_status_display()}')
+                return '\n'.join(lines)
             return f'I could not find a task matching "{title}".'
 
         due_date = task.due_date.strftime('%b %d, %Y') if task.due_date else '—'
@@ -1582,8 +1777,11 @@ class UpdateContactAction(BaseAction):
             '', body, flags=re.IGNORECASE,
         ).strip()
 
+        # 1b. Strip leading prepositions/articles that may appear before entity
+        body = _strip_leading_noise(body)
+
         # 2. Strip entity type
-        body = re.sub(r'^(?:contact|person)\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'^(?:contacts?|people|persons?)\s+', '', body, flags=re.IGNORECASE).strip()
 
         keys = sorted(_CONTACT_UPDATE_FIELDS.keys(), key=len, reverse=True)
         field_alt = '|'.join(re.escape(k) for k in keys)
@@ -1596,14 +1794,15 @@ class UpdateContactAction(BaseAction):
         if m:
             raw_field = m.group(1).lower()
             params['updates'].append((_CONTACT_UPDATE_FIELDS[raw_field], m.group(3).strip()))
-            params['name'] = _extract_title(m.group(2).strip())
+            name = re.sub(r"'s\s*$", '', m.group(2).strip()).strip()
+            params['name'] = _extract_title(name)
             return params
 
         # 3b. Extract all "field: value" / "field to value" pairs
         pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*)\s*'
         matches = list(re.finditer(pair_re, body, flags=re.IGNORECASE))
         if matches:
-            name_text = body[:matches[0].start()].strip()
+            name_text = re.sub(r"'s\s*$", '', body[:matches[0].start()].strip()).strip()
             params['name'] = _extract_title(name_text)
             for i, m in enumerate(matches):
                 raw_field = m.group(1).lower()
@@ -1618,17 +1817,20 @@ class UpdateContactAction(BaseAction):
         m = re.search(r'\b(\+?\d[\d\s\-().]{6,20}\d)\b', body)
         if m:
             params['updates'].append(('phone', m.group(1).strip()))
-            params['name'] = _extract_title(body[:m.start()])
+            name_text = re.sub(r"'s\s*$", '', body[:m.start()].strip()).strip()
+            params['name'] = _extract_title(name_text)
             return params
 
         m = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b', body)
         if m:
             params['updates'].append(('email', m.group(1).lower()))
-            params['name'] = _extract_title(body[:m.start()])
+            name_text = re.sub(r"'s\s*$", '', body[:m.start()].strip()).strip()
+            params['name'] = _extract_title(name_text)
             return params
 
         # 5. No field-value identified — remaining body is just a name
-        params['name'] = _extract_title(body)
+        name = re.sub(r"'s\s*$", '', body).strip()
+        params['name'] = _extract_title(name)
         return params
 
     def execute(self, text, user):
@@ -1709,6 +1911,7 @@ class DeleteContactAction(BaseAction):
             r'(?:delete|remove|erase)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
+        body = _strip_leading_noise(body)
         body = re.sub(r'^(?:contact|person)\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'\s+(?:contact|person)\s*$', '', body, flags=re.IGNORECASE).strip()
         return _extract_title(body)
@@ -1750,11 +1953,12 @@ class ViewContactAction(BaseAction):
         'tell', 'about', 'who', 'give', 'information',
     })
     patterns = [
-        re.compile(r'(tell|show).*(about)'),
+        re.compile(r'(tell|show|view).*(about)'),
         re.compile(r'^who\s+is\b'),
         re.compile(r'(show|view|open).*(details?|info|information)'),
-        re.compile(r'^(contact|give)\b'),
+        re.compile(r'^(?:contact|give)\b'),
         re.compile(r'(details?|info|information)\s+(about|on|for|of)'),
+        re.compile(r'^(?:show|view|open|see|display)\s+(?!me\b)'),
     ]
 
     def _parse(self, text):
@@ -1790,6 +1994,25 @@ class ViewContactAction(BaseAction):
         body = re.sub(
             r"\s+(?:in|from|of|for|under)\s+(?:my|the|your)?\s*"
             r"(?:contacts?|crm|database|system|directory|roster|list|address\s*book)?\s*$",
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        # Handle bare verb + name (e.g. "Show Rahul Sharma")
+        body = re.sub(
+            r'^(?:show|view|open|see|display)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        # Strip leading prepositions that survive intent stripping
+        # e.g. "Show contact details of Rahul" -> "contact" stripped, "details" noise-stripped,
+        # then "of Rahul" remains — the "of" must be removed.
+        body = re.sub(
+            r'^(?:'
+            r'details?\s+(?:of|for|about|on)\s+|'
+            r'info\s+(?:about|on)\s+|'
+            r'information\s+(?:about|on)\s+|'
+            r'(?:of|for|about|on|in|from)\s+'
+            r')',
             '', body, flags=re.IGNORECASE,
         ).strip()
 
@@ -1859,6 +2082,14 @@ class ViewContactAction(BaseAction):
             Q(phone__icontains=name)
         ).first()
         if not contact:
+            if _is_entity_list_ref(name, _ENTITY_LIST_REFS['view_contact']):
+                all_items = qs.order_by('full_name')
+                if not all_items:
+                    return 'You have no contacts yet.'
+                lines = ['**Your Contacts:**']
+                for i, c in enumerate(all_items, 1):
+                    lines.append(f'{i}. **{c.full_name}**{f" ({c.email})" if c.email else ""}')
+                return '\n'.join(lines)
             return f'I could not find a contact matching "{name}".'
 
         created = contact.created_at.strftime('%b %d, %Y') if contact.created_at else '—'
@@ -2217,14 +2448,16 @@ class UpdateLeadAction(BaseAction):
     """Update a lead's fields from natural language."""
     action_type = 'update_lead'
     keywords = frozenset({
-        'update', 'edit', 'change', 'modify', 'set', 'move',
+        'update', 'edit', 'change', 'modify', 'set', 'move', 'rename',
         'lead', 'prospect', 'deal',
         'qualified', 'won', 'lost', 'contacted',
     })
     patterns = [
-        re.compile(r'\b(update|edit|change|modify|set|move)\b.*(lead|prospect|deal)'),
+        re.compile(r'\b(update|edit|change|modify|set|move|rename)\b.*(lead|prospect|deal)'),
         re.compile(r'(lead|prospect|deal).*(?:status|priority|source)\s+(?:to|as|is)'),
         re.compile(r'(lead|prospect|deal).*(qualified|won|lost|contacted)'),
+        re.compile(r'\b(update|edit|change|modify|set|move|rename)\b.*(status|name|priority|source|company|email|phone)'),
+        re.compile(r'\b(update|edit|change|modify|set|move|rename)\b.*\b(qualified|won|lost|contacted)\b'),
     ]
 
     _STATUS_MAP = {
@@ -2246,8 +2479,11 @@ class UpdateLeadAction(BaseAction):
             '', body, flags=re.IGNORECASE,
         ).strip()
 
+        # 1b. Strip leading prepositions/articles that may appear before entity
+        body = _strip_leading_noise(body)
+
         # 2. Strip entity type
-        body = re.sub(r'^(?:lead|prospect|deal)\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'^(?:leads?|prospects?|deals?)\s+', '', body, flags=re.IGNORECASE).strip()
 
         keys = sorted(_LEAD_UPDATE_FIELDS.keys(), key=len, reverse=True)
         field_alt = '|'.join(re.escape(k) for k in keys)
@@ -2260,14 +2496,17 @@ class UpdateLeadAction(BaseAction):
         if m:
             raw_field = m.group(1).lower()
             params['updates'].append((_LEAD_UPDATE_FIELDS[raw_field], m.group(3).strip()))
-            params['name'] = _extract_title(m.group(2).strip())
+            name = re.sub(r"'s\s*$", '', m.group(2).strip()).strip()
+            name = re.sub(r'\s+(?:leads?|prospects?|deals?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name)
             return params
 
         # 3b. Extract all "field value" / "field to value" / "field: value" pairs
-        pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*|\s+)(?=\S)'
+        pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is=)\s*|:\s*|\s+)(?=\S)'
         matches = list(re.finditer(pair_re, body, flags=re.IGNORECASE))
         if matches:
-            name_text = body[:matches[0].start()].strip()
+            name_text = re.sub(r"'s\s*$", '', body[:matches[0].start()].strip()).strip()
+            name_text = re.sub(r'\s+(?:leads?|prospects?|deals?)[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
             params['name'] = _extract_title(name_text)
             for i, m in enumerate(matches):
                 raw_field = m.group(1).lower()
@@ -2282,11 +2521,15 @@ class UpdateLeadAction(BaseAction):
         m = re.search(r'\b(qualified|won|lost|contacted)\b', body, flags=re.IGNORECASE)
         if m:
             params['updates'].append(('status', m.group(1)))
-            params['name'] = _extract_title(body[:m.start()].strip())
+            name_text = re.sub(r"'s\s*$", '', body[:m.start()].strip()).strip()
+            name_text = re.sub(r'\s+(?:leads?|prospects?|deals?)[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name_text)
             return params
 
         # 5. No field-value identified — remaining body is just the name
-        params['name'] = _extract_title(body)
+        name = re.sub(r"'s\s*$", '', body).strip()
+        name = re.sub(r'\s+(?:leads?|prospects?|deals?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+        params['name'] = _extract_title(name)
         return params
 
     def execute(self, text, user):
@@ -2377,13 +2620,19 @@ class DeleteLeadAction(BaseAction):
             r'(?:delete|remove|erase|cancel)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
-        body = re.sub(r'^(?:lead|prospect|deal)\s+', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'\s+(?:lead|prospect|deal)\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = _strip_leading_noise(body)
+        body = re.sub(r'^(?:leads?|prospects?|deals?)\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?(?:leads?|prospects?|deals?)[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(r'\s+(?:leads?|prospects?|deals?)[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(
             r'\s+from\s+(?:the\s+)?(?:crm|database|system|records)\s*$',
             '', body, flags=re.IGNORECASE,
         ).strip()
-        return _extract_title(body)
+        name = re.sub(r"'s\s*$", '', body).strip()
+        return _extract_title(name)
 
     def execute(self, text, user):
         lead_name = self._parse(text)
@@ -2419,13 +2668,14 @@ class ViewLeadAction(BaseAction):
     action_type = 'view_lead'
     keywords = frozenset({
         'lead', 'prospect', 'deal', 'show', 'view', 'open', 'details',
-        'tell', 'about',
+        'tell', 'about', 'who',
     })
     patterns = [
         re.compile(r'(show|view|open).*(lead|prospect|deal)'),
         re.compile(r'(lead|prospect|deal).*(details|info|information|about)'),
         re.compile(r'(tell|show).*(about).*(lead|prospect|deal)'),
         re.compile(r'^(lead|prospect|deal)\b'),
+        re.compile(r'^who\s+is\b'),
     ]
 
     def _parse(self, text):
@@ -2440,6 +2690,7 @@ class ViewLeadAction(BaseAction):
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(r'^about\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'^who\s+is\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'^(?:lead|prospect|deal)\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(
             r'^(?:details?|info|information)(?:\s+(?:for|about|on)\s+|\s+)',
@@ -2447,7 +2698,14 @@ class ViewLeadAction(BaseAction):
         ).strip()
         body = re.sub(r'\s+(?:lead|prospect|deal)\s*$', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'\s+(?:details?|info|information)\s*$', '', body, flags=re.IGNORECASE).strip()
-        return _extract_title(body)
+        # Strip remaining standalone noise words
+        body = re.sub(
+            r'^(?:the|a|an|about|details?|info|information|everything|full|'
+            r'complete|my|this|that)\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        name = re.sub(r"'s\s*$", '', body).strip()
+        return _extract_title(name)
 
     def execute(self, text, user):
         lead_name = self._parse(text)
@@ -2461,6 +2719,14 @@ class ViewLeadAction(BaseAction):
         if not lead:
             lead = qs.filter(lead_name__iexact=lead_name).first()
         if not lead:
+            if _is_entity_list_ref(lead_name, _ENTITY_LIST_REFS['view_lead']):
+                all_items = qs.order_by('-created_at')
+                if not all_items:
+                    return 'You have no leads yet.'
+                lines = ['**Your Leads:**']
+                for i, l in enumerate(all_items, 1):
+                    lines.append(f'{i}. **{l.lead_name}** - {l.get_status_display()}')
+                return '\n'.join(lines)
             return f'I could not find a lead matching "{lead_name}".'
 
         revenue = f'${lead.expected_revenue:,.2f}' if lead.expected_revenue else '—'
@@ -2578,6 +2844,7 @@ class CreateEventAction(BaseAction):
     })
     patterns = [
         re.compile(r'(create|add|schedule|new).*(event|meeting|appointment|call|reminder)'),
+        re.compile(r'schedule\s+'),
     ]
 
     _STATUS_MAP = {
@@ -2700,6 +2967,11 @@ class CreateEventAction(BaseAction):
         )
         if m:
             body = body[m.end():].strip()
+        # Fallback: strip bare "schedule" verb without entity keyword
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?schedule\s+(?:a\s+|an\s+)?',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
         body = re.sub(
             r'^(?:for|named|called|about)\s+', '', body, flags=re.IGNORECASE,
         ).strip()
@@ -2784,16 +3056,18 @@ class UpdateEventAction(BaseAction):
     """Update an event's fields from natural language."""
     action_type = 'update_event'
     keywords = frozenset({
-        'update', 'edit', 'change', 'modify', 'reschedule', 'move',
+        'update', 'edit', 'change', 'modify', 'reschedule', 'move', 'rename',
         'event', 'meeting', 'appointment', 'call', 'reminder',
     })
     patterns = [
-        re.compile(r'(update|edit|change|modify|reschedule|move).*(event|meeting|appointment|call|reminder)'),
+        re.compile(r'\b(update|edit|change|modify|reschedule|move|rename)\b.*\b(event|meeting|appointment|call|reminder)\b'),
         re.compile(r'(event|meeting|appointment).*(?:to|as)\s+(?:\d|\w+)'),
-        re.compile(r'(move|reschedule)\s+'),
-        re.compile(r'(change|update|set|modify)\s+(?:the\s+)?'
+        re.compile(r'\b(move|reschedule)\s+'),
+        re.compile(r'(change|update|set|modify|rename)\s+(?:the\s+)?'
                    r'(?:time|date|location|status|type|description|title|name|link|'
                    r'end\s*time|start\s*time)\b'),
+        re.compile(r'(?:update|change|edit|modify|rename)\s+\w+(?:\s+\w+)*\s+'
+                   r'(?:to|at)\s+\d{1,2}\s*(?:am|pm)\b'),
     ]
 
     def _parse(self, text):
@@ -2804,28 +3078,52 @@ class UpdateEventAction(BaseAction):
         # 1. Strip action verb
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:update|edit|change|modify|reschedule|move)\s+',
+            r'(?:update|edit|change|modify|reschedule|move|rename)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
 
-        # 2. Strip entity type
+        # 1b. Strip leading prepositions/articles that may appear before entity
+        body = _strip_leading_noise(body)
+
+        # 2. Strip entity type (with optional plural)
         body = re.sub(
-            r'^(?:event|meeting|appointment|call|reminder)\s+',
+            r'^(?:events?|meetings?|appointments?|calls?|reminders?)\s+',
             '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?|calendar|schedule)[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        # Insert ":" between bare field keywords and values ("status done" → "status: done")
+        _evt_fk = '|'.join(re.escape(k) for k in _EVENT_UPDATE_FIELDS.keys())
+        body = re.sub(
+            r'\b(' + _evt_fk + r')\s+(?!(?:to|as|is|=|of)\s)(?=\S)',
+            r'\1: ', body, flags=re.IGNORECASE,
         ).strip()
 
         # 3. Try direct field-value extraction (supports plain "field value")
         keys = sorted(_EVENT_UPDATE_FIELDS.keys(), key=len, reverse=True)
         field_alt = '|'.join(re.escape(k) for k in keys)
         m = re.search(
-            r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*|\s+)(.+?)$',
+            r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)|:\s*)\s*(.+?)$',
             body, flags=re.IGNORECASE,
         )
         if m:
             raw_field = m.group(1).lower()
             params['field'] = _EVENT_UPDATE_FIELDS[raw_field]
             params['value'] = m.group(2).strip()
-            params['identifier'] = _extract_title(body[:m.start()])
+            raw_ident = body[:m.start()]
+            raw_ident = re.sub(r"'s\s*$", '', raw_ident.strip(), flags=re.IGNORECASE)
+            raw_ident = re.sub(r'^(?:the|a|an)\b\s*', '', raw_ident, flags=re.IGNORECASE).strip()
+            raw_ident = re.sub(
+                r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$',
+                '', raw_ident, flags=re.IGNORECASE,
+            ).strip()
+            raw_ident = re.sub(
+                r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$',
+                '', raw_ident, flags=re.IGNORECASE,
+            ).strip()
+            params['identifier'] = _extract_title(raw_ident)
             return params
 
         # 4. Try _parse_update_field_value for possessive / "as" formats
@@ -2833,7 +3131,15 @@ class UpdateEventAction(BaseAction):
         if field:
             params['field'] = field
             params['value'] = value
-            params['identifier'] = remaining
+            params['identifier'] = re.sub(r"'s\s*$", '', remaining.strip())
+            params['identifier'] = re.sub(
+                r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$',
+                '', params['identifier'], flags=re.IGNORECASE,
+            ).strip()
+            params['identifier'] = re.sub(
+                r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$',
+                '', params['identifier'], flags=re.IGNORECASE,
+            ).strip()
             return params
 
         # 5. For "move/reschedule <event> to <time/date>":
@@ -2842,16 +3148,37 @@ class UpdateEventAction(BaseAction):
         if t:
             params['field'] = 'start_time'
             params['value'] = t
-            cleaned = re.sub(r'\b(?:to|at)\s+', '', time_body, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'\b(?:to|at)\b\s*', '', time_body, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r"'s\b", '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'^(?:events?|meetings?|appointments?|calls?|reminders?)\s+', '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', cleaned, flags=re.IGNORECASE).strip()
             params['identifier'] = _extract_title(cleaned)
             return params
 
-        #    Then try date
+        #    Then try date — try to extract a second date for "move <event> to <date>"
         d, date_body = _parse_date_from_text(body)
         if d:
+            # Try extracting a second date (the target)
+            d2, date_body2 = _parse_date_from_text(date_body)
+            if d2:
+                params['field'] = 'start_date'
+                params['value'] = d2
+                cleaned = re.sub(r'\b(?:to|on)\b\s*', '', date_body2, flags=re.IGNORECASE).strip()
+                cleaned = re.sub(r"'s\b", '', cleaned, flags=re.IGNORECASE).strip()
+                cleaned = re.sub(r'^(?:events?|meetings?|appointments?|calls?|reminders?)\s+', '', cleaned, flags=re.IGNORECASE).strip()
+                cleaned = re.sub(r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', cleaned, flags=re.IGNORECASE).strip()
+                cleaned = re.sub(r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', cleaned, flags=re.IGNORECASE).strip()
+                params['identifier'] = _extract_title(cleaned)
+                return params
+            # Single date — use it as the value
             params['field'] = 'start_date'
             params['value'] = d
-            cleaned = re.sub(r'\b(?:to|on)\s+', '', date_body, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'\b(?:to|on)\b\s*', '', date_body, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r"'s\b", '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'^(?:events?|meetings?|appointments?|calls?|reminders?)\s+', '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', cleaned, flags=re.IGNORECASE).strip()
             params['identifier'] = _extract_title(cleaned)
             return params
 
@@ -2863,7 +3190,13 @@ class UpdateEventAction(BaseAction):
         if m:
             params['field'] = 'status'
             params['value'] = m.group(2)
-            params['identifier'] = _extract_title(body[:m.start()])
+            raw_ident = body[:m.start()]
+            raw_ident = re.sub(r"'s\s*$", '', raw_ident.strip(), flags=re.IGNORECASE)
+            raw_ident = re.sub(r'^(?:the|a|an)\b\s*', '', raw_ident, flags=re.IGNORECASE).strip()
+            raw_ident = re.sub(r'^(?:events?|meetings?|appointments?|calls?|reminders?)\s+', '', raw_ident, flags=re.IGNORECASE).strip()
+            raw_ident = re.sub(r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', raw_ident, flags=re.IGNORECASE).strip()
+            raw_ident = re.sub(r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', raw_ident, flags=re.IGNORECASE).strip()
+            params['identifier'] = _extract_title(raw_ident)
             return params
 
         # 7. Check for "to <time>" pattern (without explicit field)
@@ -2884,13 +3217,28 @@ class UpdateEventAction(BaseAction):
                 t = time_class(hour, minute)
                 params['field'] = 'start_time'
                 params['value'] = t
-                params['identifier'] = _extract_title(body[:m.start()])
+                raw_ident = body[:m.start()]
+                raw_ident = re.sub(r"'s\s*$", '', raw_ident.strip(), flags=re.IGNORECASE)
+                raw_ident = re.sub(r'^(?:the|a|an)\b\s*', '', raw_ident, flags=re.IGNORECASE).strip()
+                raw_ident = re.sub(r'^(?:events?|meetings?|appointments?|calls?|reminders?)\s+', '', raw_ident, flags=re.IGNORECASE).strip()
+                raw_ident = re.sub(r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', raw_ident, flags=re.IGNORECASE).strip()
+                raw_ident = re.sub(r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$', '', raw_ident, flags=re.IGNORECASE).strip()
+                params['identifier'] = _extract_title(raw_ident)
                 return params
             except ValueError:
                 pass
 
         # 8. No field-value — body is the identifier
-        params['identifier'] = _extract_title(body)
+        body_ident = re.sub(r"'s\s*$", '', body.strip())
+        body_ident = re.sub(
+            r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$',
+            '', body_ident, flags=re.IGNORECASE,
+        ).strip()
+        body_ident = re.sub(
+            r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$',
+            '', body_ident, flags=re.IGNORECASE,
+        ).strip()
+        params['identifier'] = _extract_title(body_ident)
         return params
 
     def _find_event(self, identifier, user):
@@ -3008,6 +3356,7 @@ class DeleteEventAction(BaseAction):
     patterns = [
         re.compile(r'(delete|remove|cancel|erase)\s+(event|meeting|appointment)'),
         re.compile(r'(delete|remove|cancel|erase).*\b(event|meeting|appointment)\b'),
+        re.compile(r'(?:delete|remove|cancel|erase)\s+(?=[a-zA-Z])'),
     ]
 
     def _parse(self, text):
@@ -3017,12 +3366,24 @@ class DeleteEventAction(BaseAction):
             r'(?:delete|remove|erase|cancel)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
-        body = re.sub(r'^(?:event|meeting|appointment)\s+', '', body, flags=re.IGNORECASE).strip()
+        body = _strip_leading_noise(body)
+        body = re.sub(r'^(?:events?|meetings?|appointments?|calls?)\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(
-            r'\s+from\s+(?:the\s+)?(?:event|meeting|appointment|calendar|model|database|system)'
-            r'(?:\s+(?:event|meeting|appointment|calendar|model|database|system))*\s*$',
+            r'\s+from\s+(?:the\s+)?(?:events?|meetings?|appointments?|calls?|reminders?|calendar|schedule)'
+            r'[.,;:]*\s*$',
             '', body, flags=re.IGNORECASE,
         ).strip()
+        # Strip entity-type words from end (e.g. "demo meeting" -> "demo")
+        body = re.sub(
+            r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        # Strip entity-type word + "with <name>" suffix (e.g. "demo meeting with Kunal" -> "demo")
+        body = re.sub(
+            r'\s+(?:events?|meetings?|appointments?|calls?|reminders?)\s+with\s+.+$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(r"'s\b", '', body, flags=re.IGNORECASE).strip()
         return _extract_title(body)
 
     def _find_event(self, identifier, user):
@@ -3098,12 +3459,15 @@ class ViewEventAction(BaseAction):
     action_type = 'view_event'
     keywords = frozenset({
         'event', 'meeting', 'appointment', 'show', 'view', 'open', 'details',
-        'tell', 'about',
+        'tell', 'about', 'agenda', 'schedule', 'calendar',
     })
     patterns = [
         re.compile(r'(show|view|open).*(event|meeting|appointment)'),
         re.compile(r'(event|meeting|appointment).*(details|info|information)'),
         re.compile(r'(tell|show).*(about).*(event|meeting|appointment)'),
+        re.compile(r'(?:do\s+(?:i|we)\s+have|is\s+there|are\s+there|what\s+'
+                   r'(?:meetings?|events?|appointments?)|when\s+(?:is|are))\b'),
+        re.compile(r'(?:agenda|schedule)\b'),
     ]
 
     def _parse(self, text):
@@ -3118,6 +3482,13 @@ class ViewEventAction(BaseAction):
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(r'^about\s+', '', body, flags=re.IGNORECASE).strip()
+        # Strip question patterns
+        body = re.sub(
+            r'^(?:do\s+(?:i|we)\s+have\s+(?:any\s+)?|is\s+there\s+(?:a|an|any)\s+|'
+            r'are\s+there\s+(?:any\s+)?|what\s+(?:meetings?|events?|appointments?)\s+'
+            r'(?:do\s+(?:i|we)\s+have|are\s+)?|when\s+(?:is|are)\s+)',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
         body = re.sub(r'^(?:event|meeting|appointment)\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(
             r'^(?:details?|info|information)(?:\s+(?:for|about|on)\s+|\s+)',
@@ -3141,6 +3512,7 @@ class ViewEventAction(BaseAction):
             '', body, flags=re.IGNORECASE,
         ).strip()
         body = re.sub(r'^[\s"\'.,;:!?\-]+|[\s"\'.,;:!?\-]+$', '', body).strip()
+        body = re.sub(r"'s\b", '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'\s+', ' ', body).strip()
         return body
 
@@ -3179,6 +3551,15 @@ class ViewEventAction(BaseAction):
                 event = user.events.filter(start_date=d).first()
 
         if not event:
+            if _is_entity_list_ref(identifier, _ENTITY_LIST_REFS['view_event']):
+                all_items = user.events.all().order_by('start_date', 'start_time')
+                if not all_items:
+                    return 'You have no events yet.'
+                lines = ['**Your Events:**']
+                for i, e in enumerate(all_items, 1):
+                    d = e.start_date.strftime('%b %d') if e.start_date else '—'
+                    lines.append(f'{i}. **{e.title}** - {d} ({e.get_status_display()})')
+                return '\n'.join(lines)
             return f'I could not find an event matching "{identifier}".'
 
         start_date = event.start_date.strftime('%b %d, %Y') if event.start_date else '—'
@@ -3394,6 +3775,7 @@ class DeleteCampaignAction(BaseAction):
     patterns = [
         re.compile(r'(delete|remove|erase|cancel)\s+campaign\b'),
         re.compile(r'(delete|remove|erase|cancel).*\bcampaign\b'),
+        re.compile(r'(?:delete|remove|erase|cancel)\s+(?=[a-zA-Z])'),
     ]
 
     def _parse(self, text):
@@ -3403,8 +3785,10 @@ class DeleteCampaignAction(BaseAction):
             r'(?:delete|remove|erase|cancel)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
-        body = re.sub(r'^campaign\s+', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'\s+campaign\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = _strip_leading_noise(body)
+        body = re.sub(r'^campaigns?\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'\s+(?:from\s+)?campaigns?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'^(?:ai\s+)?crm\s+', '', body, flags=re.IGNORECASE).strip()
         return _extract_title(body)
 
     def execute(self, text, user):
@@ -3415,18 +3799,12 @@ class DeleteCampaignAction(BaseAction):
         from campaigns.models import Campaign
 
         qs = user.campaigns.all()
-        matches = list(qs.filter(name__icontains=name))
-        if len(matches) == 0:
+        campaign = qs.filter(name__iexact=name).first()
+        if not campaign:
+            campaign = qs.filter(name__icontains=name).first()
+        if not campaign:
             return f'I could not find a campaign matching "{name}".'
-        if len(matches) > 1:
-            names = '\n'.join(f'  {i+1}. **{c.name}**' for i, c in enumerate(matches))
-            return (
-                f'I found multiple campaigns matching "{name}":\n'
-                f'{names}\n'
-                f'Please specify which one you want to delete.'
-            )
 
-        campaign = matches[0]
         try:
             from django.db import transaction
             with transaction.atomic():
@@ -3436,6 +3814,261 @@ class DeleteCampaignAction(BaseAction):
             return f'Failed to delete campaign: {e}'
 
         return f'Campaign **"{name}"** has been deleted.'
+
+
+@register
+class ViewCampaignAction(BaseAction):
+    action_type = 'view_campaign'
+    keywords = frozenset({
+        'campaign', 'show', 'view', 'open', 'details',
+        'tell', 'about', 'give', 'information',
+    })
+    patterns = [
+        re.compile(r'(tell|show|view).*(about)'),
+        re.compile(r'(show|view|open).*(details?|info|information)'),
+        re.compile(r'(details?|info|information)\s+(about|on|for|of)'),
+        re.compile(r'^(?:show|view|open|see|display)\s+'),
+        re.compile(r'(show|view|open).*(campaign)'),
+    ]
+
+    def _parse(self, text):
+        body = text
+
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:'
+            r'tell\s+(?:me\s+)?(?:about|everything\s+about)\s+|'
+            r'show\s+(?:me\s+)?(?:details?\s+(?:of|for|about|on)\s+|'
+            r'(?:everything|full|complete)\s+about\s+|about\s+)|'
+            r'who\s+is\s+|'
+            r'give\s+(?:me\s+)?(?:information\s+(?:about|on)\s+|'
+            r'details?\s+(?:about|on)\s+)?|'
+            r'information\s+(?:about|on)\s+|'
+            r'details?\s+(?:about|on|for|of)\s+|'
+            r'about\s+|'
+            r'(?:view|open|see|display)\s+'
+            r')',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'\b(?:about|details?|info|information|everything|full|'
+            r'complete|my|the|a|an|campaign|entry|record|profile)\b\s*',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'^campaign\s+', '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r"\s+(?:in|from|of|for|under)\s+(?:my|the|your)?\s*"
+            r"(?:campaigns?|crm|database|system|list)?\s*$",
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'^(?:show|view|open|see|display)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'^(?:details?\s+(?:of|for|about|on)\s+|'
+            r'info\s+(?:about|on)\s+|'
+            r'information\s+(?:about|on)\s+|'
+            r'(?:of|for|about|on|in|from)\s+)',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(r'^[\s"\'.,;:!?\-]+|[\s"\'.,;:!?\-]+$', '', body).strip()
+        body = re.sub(r'\s+', ' ', body).strip()
+
+        return body
+
+    def execute(self, text, user):
+        name = self._parse(text)
+        if not name:
+            return 'I need a campaign name to show. Which campaign would you like to view?'
+
+        from campaigns.models import Campaign
+
+        qs = user.campaigns.all()
+        matches = list(qs.filter(name__icontains=name))
+        if len(matches) == 0:
+            if _is_entity_list_ref(name, _ENTITY_LIST_REFS['view_campaign']):
+                all_items = qs.order_by('-created_at')
+                if not all_items:
+                    return 'You have no campaigns yet.'
+                lines = ['**Your Campaigns:**']
+                for i, c in enumerate(all_items, 1):
+                    lines.append(f'{i}. **{c.name}** - {c.get_status_display()}')
+                return '\n'.join(lines)
+            return f'I could not find a campaign matching "{name}".'
+        if len(matches) > 1:
+            names_list = '\n'.join(f'  {i+1}. **{c.name}**' for i, c in enumerate(matches))
+            return (
+                f'I found multiple campaigns matching "{name}":\n'
+                f'{names_list}\n'
+                f'Please specify which one you want to view.'
+            )
+
+        campaign = matches[0]
+        lines = [f'**{campaign.name}**']
+        lines.append(f'Status: {campaign.status}')
+        if campaign.subject:
+            lines.append(f'Subject: {campaign.subject}')
+        if campaign.body:
+            lines.append(f'Body: {campaign.body[:500]}')
+        if campaign.scheduled_at:
+            from django.utils import timezone
+            local = timezone.localtime(campaign.scheduled_at)
+            lines.append(f'Scheduled: {local.strftime("%B %d, %Y at %I:%M %p")}')
+        lines.append(f'Created: {campaign.created_at.strftime("%B %d, %Y")}')
+        return '\n'.join(lines)
+
+
+@register
+class UpdateCampaignAction(BaseAction):
+    action_type = 'update_campaign'
+    keywords = frozenset({
+        'update', 'edit', 'change', 'modify', 'set', 'rename',
+        'campaign', 'name', 'subject', 'status', 'body', 'content',
+        'schedule', 'date', 'time',
+    })
+    patterns = [
+        re.compile(r'(update|edit|change|modify|rename|set)\b'),
+        re.compile(r"(campaign).*(?:'s\s+)?(?:name|subject|status|body|content|schedule)"),
+        re.compile(r"(name|subject|status|body|content|schedule)\s+(?:to|as)"),
+        re.compile(r"(name|subject|status|body|content|schedule)\s*:"),
+    ]
+
+    def _parse(self, text):
+        params = {'updates': []}
+        body = text
+
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:update|edit|change|modify|rename|set)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = _strip_leading_noise(body)
+
+        body = re.sub(r'^campaigns?\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?campaigns?[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        keys = sorted(_CAMPAIGN_UPDATE_FIELDS.keys(), key=len, reverse=True)
+        field_alt = '|'.join(re.escape(k) for k in keys)
+
+        m = re.search(
+            r'\b(' + field_alt + r')\s+of\s+(.+?)\s+(?:to|as)\s+(.+?)$',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            raw_field = m.group(1).lower()
+            params['updates'].append((_CAMPAIGN_UPDATE_FIELDS[raw_field], m.group(3).strip()))
+            name = re.sub(r"'s\s*$", '', m.group(2).strip()).strip()
+            name = re.sub(r'\s+from\s+(?:the\s+)?campaigns?[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+            name = re.sub(r'\s+campaigns?[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name)
+            return params
+
+        pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)\s*|:\s*|\s+)(?=\S)'
+        matches = list(re.finditer(pair_re, body, flags=re.IGNORECASE))
+        if matches:
+            name_text = re.sub(r"'s\s*$", '', body[:matches[0].start()].strip()).strip()
+            name_text = re.sub(r'\s+from\s+(?:the\s+)?campaigns?[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
+            name_text = re.sub(r'\s+campaigns?[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name_text)
+            for i, m in enumerate(matches):
+                raw_field = m.group(1).lower()
+                val_start = m.end()
+                val_end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+                value = body[val_start:val_end].strip().rstrip('. ')
+                if value:
+                    params['updates'].append((_CAMPAIGN_UPDATE_FIELDS[raw_field], value))
+            return params
+
+        name = re.sub(r"'s\s*$", '', body).strip()
+        name = re.sub(r'\s+from\s+(?:the\s+)?campaigns?[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+        name = re.sub(r'\s+campaigns?[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+        params['name'] = _extract_title(name)
+        return params
+
+    def execute(self, text, user):
+        params = self._parse(text)
+        name = params.get('name', '').strip()
+        if not name:
+            return 'I need a campaign name to update. Which campaign should I update?'
+
+        from campaigns.models import Campaign
+        from django.db import transaction
+
+        qs = user.campaigns.all()
+        campaign = qs.filter(name__iexact=name).first()
+        if not campaign:
+            campaign = qs.filter(name__icontains=name).first()
+        if not campaign:
+            return f'I could not find a campaign matching "{name}".'
+
+        updates = params.get('updates', [])
+        if not updates:
+            return (
+                f'I found campaign **"{campaign.name}"**, but what would you like to change? '
+                f'You can update name, subject, body, status, or schedule.'
+            )
+
+        applied = []
+        for field, value in updates:
+            normalized = value.strip()
+            if field == 'status':
+                normalized = normalized.title()
+                valid = [c[0] for c in Campaign.STATUS_CHOICES]
+                if normalized not in valid:
+                    return (
+                        f'Invalid status "{value}". '
+                        f'Valid options are: {", ".join(valid)}.'
+                    )
+            elif field == 'scheduled_at':
+                dt, _ = _parse_datetime_from_text(normalized)
+                if dt:
+                    setattr(campaign, field, dt)
+                    applied.append(f'{field} set to {dt.strftime("%B %d, %Y at %I:%M %p")}')
+                    continue
+                else:
+                    from dateutil import parser as dateparser
+                    try:
+                        dt = dateparser.parse(normalized)
+                        from django.utils import timezone
+                        if timezone.is_naive(dt):
+                            dt = timezone.make_aware(dt)
+                        setattr(campaign, field, dt)
+                        applied.append(f'{field} set to {dt.strftime("%B %d, %Y at %I:%M %p")}')
+                        continue
+                    except Exception:
+                        return (
+                            f'I could not understand the schedule "{value}". '
+                            f'Please provide a date and time like '
+                            f'"tomorrow at 3pm" or "2026-01-15 14:00".'
+                        )
+            setattr(campaign, field, normalized)
+            applied.append(f'{field} set to "{normalized}"')
+
+        if not applied:
+            return f'No changes were made to campaign **"{campaign.name}"**.'
+
+        try:
+            with transaction.atomic():
+                campaign.save()
+        except Exception as e:
+            logger.exception('Failed to update campaign for user=%s', user)
+            return f'Failed to update campaign: {e}'
+
+        changed = '\n'.join(f'  \u2022 {a}' for a in applied)
+        return f'Campaign **"{campaign.name}"** has been updated:\n{changed}'
 
 
 @register
@@ -3564,6 +4197,398 @@ class CreateNotificationAction(BaseAction):
                 params['title'] = t
 
         return params
+
+
+@register
+class ViewNotificationAction(BaseAction):
+    action_type = 'view_notification'
+    keywords = frozenset({
+        'notification', 'alert', 'show', 'view', 'list', 'read',
+        'latest', 'recent', 'all', 'unread',
+    })
+    patterns = [
+        re.compile(r'(show|view|list|get|display|read)\s+'
+                   r'(?:my\s+)?(?:recent\s+)?(?:notifications?|alerts?)'),
+        re.compile(r'(show|view|list|get|display|tell)\s+(?:latest|recent|all|unread)'),
+        re.compile(r'^(?:show|view|list|get|display|tell)\s+'),
+        re.compile(r'(notifications?|alerts?)\s+(?:list|details?|info)'),
+        re.compile(r'(tell|show).*(about).*(notification|alert)'),
+    ]
+
+    def _parse(self, text):
+        body = text.lower()
+
+        # Detect "latest"/"recent"/"unread" qualifier
+        if re.search(r'\b(latest|recent|newest)\b', body):
+            return {'qualifier': 'latest'}
+
+        if re.search(r'\b(unread)\b', body):
+            return {'qualifier': 'unread'}
+
+        if re.search(r'\b(all)\b', body):
+            return {'qualifier': 'all'}
+
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:show|view|list|get|display|read)\s+'
+            r'(?:my\s+)?(?:recent\s+)?(?:notifications?|alerts?)?\s*',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'\b(?:my|the|a|an|notification|alert|notifications|alerts|'
+            r'recent|latest|all|unread)\b\s*',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(r'^[\s"\'.,;:!?\-]+|[\s"\'.,;:!?\-]+$', '', body).strip()
+        body = re.sub(r'\s+', ' ', body).strip()
+
+        if body:
+            return {'title': body}
+        return {}
+
+    def execute(self, text, user):
+        params = self._parse(text)
+
+        from workflows.models import Notification
+
+        qs = user.notifications.all().order_by('-created_at')
+
+        qualifier = params.get('qualifier')
+        if qualifier == 'latest':
+            notification = qs.first()
+            if not notification:
+                return 'You have no notifications yet.'
+            return self._format_notification(notification)
+
+        if qualifier == 'unread':
+            qs = qs.filter(is_read=False)
+
+        title = params.get('title')
+        if title:
+            if _is_entity_list_ref(title, _ENTITY_LIST_REFS['view_notification']):
+                recent = list(qs[:10])
+                if not recent:
+                    return 'You have no notifications yet.'
+                if len(recent) == 1:
+                    return self._format_notification(recent[0])
+                lines = [f'**Notifications** ({len(recent)} shown):']
+                for i, n in enumerate(recent):
+                    status = 'Read' if n.is_read else 'Unread'
+                    lines.append(f'{i+1}. **{n.title}** - {status}')
+                return '\n'.join(lines)
+            matches = list(qs.filter(title__icontains=title))
+            if len(matches) == 0:
+                return f'I could not find a notification matching "{title}".'
+            if len(matches) > 1:
+                names_list = '\n'.join(
+                    f'  {i+1}. **{n.title}**' for i, n in enumerate(matches[:10])
+                )
+                return (
+                    f'I found multiple notifications matching "{title}":\n'
+                    f'{names_list}\n'
+                    f'Please specify which one.'
+                )
+            return self._format_notification(matches[0])
+
+        # No specific match — show recent list
+        recent = list(qs[:10])
+        if not recent:
+            return 'You have no notifications yet.'
+
+        if len(recent) == 1:
+            return self._format_notification(recent[0])
+
+        lines = [f'**Notifications** ({len(recent)} shown):']
+        for i, n in enumerate(recent):
+            status = '📖' if n.is_read else '🔴'
+            lines.append(f'{i+1}. {status} **{n.title}**')
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _format_notification(n):
+        status = 'Read' if n.is_read else 'Unread'
+        lines = [f'**{n.title}**']
+        lines.append(f'Status: {status}')
+        if n.message:
+            lines.append(f'Message: {n.message[:500]}')
+        if n.link:
+            lines.append(f'Link: {n.link}')
+        lines.append(f'Created: {n.created_at.strftime("%B %d, %Y at %I:%M %p")}')
+        return '\n'.join(lines)
+
+
+@register
+class UpdateNotificationAction(BaseAction):
+    action_type = 'update_notification'
+    keywords = frozenset({
+        'update', 'edit', 'change', 'modify', 'set', 'mark', 'rename',
+        'read', 'unread', 'notification', 'alert', 'priority',
+        'title', 'message', 'latest', 'recent',
+    })
+    patterns = [
+        re.compile(r'(update|edit|change|modify|set|rename)\b'),
+        re.compile(r'mark\s+(?:as\s+)?(read|unread)\b'),
+        re.compile(r'(notification|alert).*(title|message|priority|read|status)'),
+        re.compile(r'(title|message|priority)\s+(?:to|as)'),
+        re.compile(r'(title|message|priority)\s*:'),
+    ]
+
+    def _parse(self, text):
+        params = {'updates': []}
+        body = text
+        text_lower = text.lower()
+
+        # Handle "mark [as] read/unread [the] [latest] notification"
+        # Pattern: "mark [as] read" (bare)
+        mark_bare = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'mark\s+(?:as\s+)?(read|unread)\s*$',
+            text, flags=re.IGNORECASE,
+        )
+        if mark_bare:
+            params['updates'].append(('is_read', mark_bare.group(1).lower() == 'read'))
+            return params
+
+        # Pattern: "mark [the] latest notification [as] read/unread"
+        mark_latest = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'mark\s+(?:the\s+)?(?:latest|most\s+recent)\s+'
+            r'(?:notification|alert)\s+(?:as\s+)?(read|unread)\s*$',
+            text, flags=re.IGNORECASE,
+        )
+        if mark_latest:
+            params['updates'].append(('is_read', mark_latest.group(1).lower() == 'read'))
+            params['qualifier'] = 'latest'
+            return params
+
+        # Pattern: "mark <title> notification [as] read/unread"
+        mark_title = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'mark\s+(.+?)\s+(?:notification|alert)\s+'
+            r'(?:as\s+)?(read|unread)\s*$',
+            text, flags=re.IGNORECASE,
+        )
+        if mark_title:
+            params['name'] = _extract_title(mark_title.group(1).strip())
+            params['updates'].append(('is_read', mark_title.group(2).lower() == 'read'))
+            return params
+
+        # Strip verb
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:update|edit|change|modify|set|rename)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = _strip_leading_noise(body)
+
+        # Handle "latest" / "most recent"
+        if re.search(r'\b(latest|most\s+recent)\b', text_lower) and not re.search(r'\bmark\b', text_lower):
+            params['qualifier'] = 'latest'
+
+        body = re.sub(r'^(?:notifications?|alerts?)\s+', '', body, flags=re.IGNORECASE).strip()
+
+        body = re.sub(r'\s+from\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+
+        keys = sorted(_NOTIFICATION_UPDATE_FIELDS.keys(), key=len, reverse=True)
+        field_alt = '|'.join(re.escape(k) for k in keys)
+
+        body = re.sub(
+            r'\b(' + field_alt + r')\s+(?!(?:to|as|is|=|of)\s)(?=\S)',
+            r'\1: ', body, flags=re.IGNORECASE,
+        ).strip()
+
+        m = re.search(
+            r'\b(' + field_alt + r')\s+of\s+(.+?)\s+(?:to|as)\s+(.+?)$',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            raw_field = m.group(1).lower()
+            params['updates'].append((_NOTIFICATION_UPDATE_FIELDS[raw_field], m.group(3).strip()))
+            name = re.sub(r"'s\s*$", '', m.group(2).strip()).strip()
+            name = re.sub(r'\s+from\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+            name = re.sub(r'\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name)
+            return params
+
+        pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)\s*|:\s*|\s+)(?=\S)'
+        matches = list(re.finditer(pair_re, body, flags=re.IGNORECASE))
+        if matches:
+            name_text = re.sub(r"'s\s*$", '', body[:matches[0].start()].strip()).strip()
+            name_text = re.sub(r'\s+from\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
+            name_text = re.sub(r'\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name_text)
+            for i, m in enumerate(matches):
+                raw_field = m.group(1).lower()
+                val_start = m.end()
+                val_end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+                value = body[val_start:val_end].strip().rstrip('. ')
+                if value:
+                    params['updates'].append((_NOTIFICATION_UPDATE_FIELDS[raw_field], value))
+            return params
+
+        name = re.sub(r"'s\s*$", '', body).strip()
+        name = re.sub(r'\s+from\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+        name = re.sub(r'\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+        params['name'] = _extract_title(name)
+        return params
+
+    def execute(self, text, user):
+        params = self._parse(text)
+
+        from workflows.models import Notification
+        from django.db import transaction
+
+        qs = user.notifications.all().order_by('-created_at')
+
+        qualifier = params.get('qualifier')
+        name = params.get('name', '').strip()
+        updates = params.get('updates', [])
+
+        if qualifier == 'latest':
+            notification = qs.first()
+            if not notification:
+                return 'You have no notifications to update.'
+        elif name:
+            matches = list(qs.filter(title__icontains=name))
+            if len(matches) == 0:
+                return f'I could not find a notification matching "{name}".'
+            if len(matches) > 1:
+                names_list = '\n'.join(
+                    f'  {i+1}. **{n.title}**' for i, n in enumerate(matches[:10])
+                )
+                return (
+                    f'I found multiple notifications matching "{name}":\n'
+                    f'{names_list}\n'
+                    f'Please specify which one.'
+                )
+            notification = matches[0]
+        else:
+            if not updates:
+                return (
+                    'I need to know which notification to update. '
+                    'Please specify a title or say "latest".'
+                )
+            notification = qs.first()
+            if not notification:
+                return 'You have no notifications to update.'
+
+        if not updates:
+            return (
+                f'I found notification **"{notification.title}"**, '
+                f'but what would you like to change? '
+                f'You can mark as read/unread or update title or message.'
+            )
+
+        applied = []
+        for field, value in updates:
+            if field == 'is_read':
+                if isinstance(value, bool):
+                    normalized = value
+                elif isinstance(value, str):
+                    normalized = value.lower().strip() in ('read', 'true', 'yes', '1')
+                else:
+                    normalized = bool(value)
+                applied.append(f'marked as {"read" if normalized else "unread"}')
+            elif field == 'priority':
+                return (
+                    f'Notifications do not have a priority field. '
+                    f'You can update the title, message, or mark as read/unread.'
+                )
+            else:
+                normalized = value.strip()
+                applied.append(f'{field} set to "{normalized}"')
+            setattr(notification, field, normalized)
+
+        try:
+            with transaction.atomic():
+                notification.save()
+        except Exception as e:
+            logger.exception('Failed to update notification for user=%s', user)
+            return f'Failed to update notification: {e}'
+
+        changed = '\n'.join(f'  \u2022 {a}' for a in applied)
+        return f'Notification **"{notification.title}"** has been updated:\n{changed}'
+
+
+@register
+class DeleteNotificationAction(BaseAction):
+    action_type = 'delete_notification'
+    keywords = frozenset({
+        'delete', 'remove', 'erase', 'cancel', 'notification', 'alert',
+        'latest', 'recent',
+    })
+    patterns = [
+        re.compile(r'(delete|remove|erase|cancel)\s+notification\b'),
+        re.compile(r'(delete|remove|erase|cancel).*\b(notification|alert)\b'),
+        re.compile(r'(?:delete|remove|erase|cancel)\s+(?:latest|recent)\b'),
+        re.compile(r'(?:delete|remove|erase|cancel)\s+(?=[a-zA-Z])'),
+    ]
+
+    def _parse(self, text):
+        body = text
+        text_lower = text.lower()
+
+        if re.search(r'\b(latest|most\s+recent)\b', text_lower):
+            return {'qualifier': 'latest'}
+
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:delete|remove|erase|cancel)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = _strip_leading_noise(body)
+        body = re.sub(r'^(?:notifications?|alerts?)\s*', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'\s+from\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(r'\s+(?:notifications?|alerts?)[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
+        name = _extract_title(body)
+        if name:
+            return {'name': name}
+        return {}
+
+    def execute(self, text, user):
+        params = self._parse(text)
+
+        from workflows.models import Notification
+        from django.db import transaction
+
+        qs = user.notifications.all().order_by('-created_at')
+
+        qualifier = params.get('qualifier')
+        name = params.get('name', '').strip()
+
+        if qualifier == 'latest':
+            notification = qs.first()
+            if not notification:
+                return 'You have no notifications to delete.'
+        elif name:
+            matches = list(qs.filter(title__icontains=name))
+            if len(matches) == 0:
+                return f'I could not find a notification matching "{name}".'
+            if len(matches) > 1:
+                names_list = '\n'.join(
+                    f'  {i+1}. **{n.title}**' for i, n in enumerate(matches[:10])
+                )
+                return (
+                    f'I found multiple notifications matching "{name}":\n'
+                    f'{names_list}\n'
+                    f'Please specify which one.'
+                )
+            notification = matches[0]
+        else:
+            return 'I need a notification title to delete, or say "latest".'
+
+        try:
+            with transaction.atomic():
+                notification.delete()
+        except Exception as e:
+            logger.exception('Failed to delete notification for user=%s', user)
+            return f'Failed to delete notification: {e}'
+
+        return f'Notification **"{notification.title}"** has been deleted.'
 
 
 @register
@@ -3944,6 +4969,348 @@ class CreateWorkflowAction(BaseAction):
             if phrase in val_lower or val_lower in phrase:
                 return mapped
         return None
+
+
+@register
+class ViewWorkflowAction(BaseAction):
+    action_type = 'view_workflow'
+    keywords = frozenset({
+        'workflow', 'automation', 'rule', 'show', 'view', 'open',
+        'details', 'tell', 'about', 'give', 'information',
+    })
+    patterns = [
+        re.compile(r'(tell|show|view).*(about)'),
+        re.compile(r'(show|view|open).*(details?|info|information)'),
+        re.compile(r'(details?|info|information)\s+(about|on|for|of)'),
+        re.compile(r'^(?:show|view|open|see|display)\s+'),
+        re.compile(r'(show|view|open).*(workflow|automation|rule)'),
+    ]
+
+    def _parse(self, text):
+        body = text
+
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:'
+            r'tell\s+(?:me\s+)?(?:about|everything\s+about)\s+|'
+            r'show\s+(?:me\s+)?(?:details?\s+(?:of|for|about|on)\s+|'
+            r'(?:everything|full|complete)\s+about\s+|about\s+)|'
+            r'give\s+(?:me\s+)?(?:information\s+(?:about|on)\s+|'
+            r'details?\s+(?:about|on)\s+)?|'
+            r'information\s+(?:about|on)\s+|'
+            r'details?\s+(?:about|on|for|of)\s+|'
+            r'about\s+|'
+            r'(?:view|open|see|display)\s+'
+            r')',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        # Strip bare verb before noise words so "Show workflow" → "workflow"
+        body = re.sub(
+            r'^(?:show|view|open|see|display)\b\s*',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'\b(?:about|details?|info|information|everything|full|'
+            r'complete|my|the|a|an|workflow|automation|rule|entry|record)\b\s*',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'^workflow\s+', '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r"\s+(?:in|from|of|for|under)\s+(?:my|the|your)?\s*"
+            r"(?:workflows?|crm|database|system|list)?\s*$",
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(
+            r'^(?:details?\s+(?:of|for|about|on)\s+|'
+            r'info\s+(?:about|on)\s+|'
+            r'information\s+(?:about|on)\s+|'
+            r'(?:of|for|about|on|in|from)\s+)',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = re.sub(r'^[\s"\'.,;:!?\-]+|[\s"\'.,;:!?\-]+$', '', body).strip()
+        body = re.sub(r'\s+', ' ', body).strip()
+
+        return body
+
+    def execute(self, text, user):
+        name = self._parse(text)
+        if not name:
+            return 'I need a workflow name to show. Which workflow would you like to view?'
+
+        from workflows.models import Workflow
+
+        qs = user.workflows.all()
+        matches = list(qs.filter(name__icontains=name))
+        if len(matches) == 0:
+            if _is_entity_list_ref(name, _ENTITY_LIST_REFS['view_workflow']):
+                all_items = qs.order_by('-created_at')
+                if not all_items:
+                    return 'You have no workflows yet.'
+                lines = ['**Your Workflows:**']
+                for i, w in enumerate(all_items, 1):
+                    lines.append(f'{i}. **{w.name}** - {"Active" if w.is_active else "Inactive"}')
+                return '\n'.join(lines)
+            return f'I could not find a workflow matching "{name}".'
+        if len(matches) > 1:
+            names_list = '\n'.join(f'  {i+1}. **{w.name}**' for i, w in enumerate(matches))
+            return (
+                f'I found multiple workflows matching "{name}":\n'
+                f'{names_list}\n'
+                f'Please specify which one you want to view.'
+            )
+
+        workflow = matches[0]
+        lines = [f'**{workflow.name}**']
+        lines.append(f'Status: {"Active" if workflow.is_active else "Inactive"}')
+        lines.append(f'Trigger: {workflow.get_trigger_type_display()}')
+        if workflow.description:
+            lines.append(f'Description: {workflow.description[:500]}')
+        lines.append(f'Created: {workflow.created_at.strftime("%B %d, %Y")}')
+        actions = workflow.actions.all()
+        if actions:
+            acts = ', '.join(a.get_action_type_display() for a in actions)
+            lines.append(f'Actions: {acts}')
+        return '\n'.join(lines)
+
+
+@register
+class UpdateWorkflowAction(BaseAction):
+    action_type = 'update_workflow'
+    keywords = frozenset({
+        'update', 'edit', 'change', 'modify', 'set', 'rename',
+        'workflow', 'automation', 'rule', 'name', 'status',
+        'active', 'trigger', 'description', 'enable', 'disable',
+    })
+    patterns = [
+        re.compile(r'(update|edit|change|modify|rename|set)\b'),
+        re.compile(r"(workflow|automation|rule).*(?:'s\s+)?"
+                   r"(?:name|status|active|trigger|description)"),
+        re.compile(r"(name|status|active|trigger|description)\s+(?:to|as)"),
+        re.compile(r"(name|status|active|trigger|description)\s*:"),
+        re.compile(r'(enable|disable)\b'),
+    ]
+
+    def _parse(self, text):
+        params = {'updates': []}
+        body = text
+
+        text_lower = text.lower()
+
+        # Handle enable/disable before verb strip
+        enable_m = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(enable|disable)\s+(?:the\s+)?(?:workflow|automation|rule)\s+(.+)$',
+            text, flags=re.IGNORECASE,
+        )
+        if enable_m:
+            verb = enable_m.group(1).lower()
+            params['name'] = _extract_title(enable_m.group(2).strip())
+            params['updates'].append(('is_active', verb == 'enable'))
+            return params
+
+        # Handle "enable/disable <name> workflow|automation|rule"
+        enable_m2 = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(enable|disable)\s+(.+?)\s+(?:workflow|automation|rule)\s*$',
+            text, flags=re.IGNORECASE,
+        )
+        if enable_m2:
+            verb = enable_m2.group(1).lower()
+            params['name'] = _extract_title(enable_m2.group(2).strip())
+            params['updates'].append(('is_active', verb == 'enable'))
+            return params
+
+        # Handle bare enable/disable
+        bare_m = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(enable|disable)\s+(?:the\s+)?(?:workflow|automation|rule)\s*$',
+            text, flags=re.IGNORECASE,
+        )
+        if bare_m:
+            return params
+
+        # Strip action verb
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:update|edit|change|modify|rename|set|enable|disable)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+
+        body = _strip_leading_noise(body)
+
+        # Handle rename before entity strip: "rename X to Y" → name=X, update name=Y
+        rename_m = re.match(
+            r'(.+?)\s+to\s+(.+)$', body, flags=re.IGNORECASE,
+        )
+        if rename_m and re.search(r'\brename\b', text_lower):
+            params['name'] = _extract_title(rename_m.group(1).strip())
+            params['updates'].append(('name', rename_m.group(2).strip()))
+            return params
+
+        body = re.sub(r'^(?:workflows?|automations?|rules?)\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?(?:workflows?|automations?|rules?)[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        # Insert ":" between bare field keywords and values ("status active" → "status: active")
+        _wf_fk = '|'.join(re.escape(k) for k in _WORKFLOW_UPDATE_FIELDS.keys())
+        body = re.sub(
+            r'\b(' + _wf_fk + r')\s+(?!(?:to|as|is|=|of)\s)(?=\S)',
+            r'\1: ', body, flags=re.IGNORECASE,
+        ).strip()
+
+        keys = sorted(_WORKFLOW_UPDATE_FIELDS.keys(), key=len, reverse=True)
+        field_alt = '|'.join(re.escape(k) for k in keys)
+
+        m = re.search(
+            r'\b(' + field_alt + r')\s+of\s+(.+?)\s+(?:to|as)\s+(.+?)$',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            raw_field = m.group(1).lower()
+            params['updates'].append((_WORKFLOW_UPDATE_FIELDS[raw_field], m.group(3).strip()))
+            name = re.sub(r"'s\s*$", '', m.group(2).strip()).strip()
+            name = re.sub(r'\s+from\s+(?:the\s+)?(?:workflows?|automations?|rules?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+            name = re.sub(r'\s+(?:workflows?|automations?|rules?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name)
+            return params
+
+        pair_re = r'\b(' + field_alt + r')(?:\s+(?:to|as|is|=)\s*|:\s*|\s+)(?=\S)'
+        matches = list(re.finditer(pair_re, body, flags=re.IGNORECASE))
+        if matches:
+            name_text = re.sub(r"'s\s*$", '', body[:matches[0].start()].strip()).strip()
+            name_text = re.sub(r'\s+from\s+(?:the\s+)?(?:workflows?|automations?|rules?)[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
+            name_text = re.sub(r'\s+(?:workflows?|automations?|rules?)[.,;:]*\s*$', '', name_text, flags=re.IGNORECASE).strip()
+            params['name'] = _extract_title(name_text)
+            for i, m in enumerate(matches):
+                raw_field = m.group(1).lower()
+                val_start = m.end()
+                val_end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+                value = body[val_start:val_end].strip().rstrip('. ')
+                if value:
+                    params['updates'].append((_WORKFLOW_UPDATE_FIELDS[raw_field], value))
+            return params
+
+        name = re.sub(r"'s\s*$", '', body).strip()
+        name = re.sub(r'\s+from\s+(?:the\s+)?(?:workflows?|automations?|rules?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+        name = re.sub(r'\s+(?:workflows?|automations?|rules?)[.,;:]*\s*$', '', name, flags=re.IGNORECASE).strip()
+        params['name'] = _extract_title(name)
+        return params
+
+    def execute(self, text, user):
+        params = self._parse(text)
+        name = params.get('name', '').strip()
+        if not name:
+            return 'I need a workflow name to update. Which workflow should I update?'
+
+        from workflows.models import Workflow
+        from django.db import transaction
+
+        qs = user.workflows.all()
+        workflow = qs.filter(name__icontains=name).first()
+        if not workflow:
+            workflow = qs.filter(name__iexact=name).first()
+        if not workflow:
+            return f'I could not find a workflow matching "{name}".'
+        updates = params.get('updates', [])
+        if not updates:
+            return (
+                f'I found workflow **"{workflow.name}"**, but what would you like to change? '
+                f'You can update name, description, status, or trigger.'
+            )
+
+        applied = []
+        for field, value in updates:
+            normalized = value.strip()
+            if field == 'is_active':
+                lower_val = normalized.lower()
+                normalized = lower_val in ('active', 'true', 'yes', '1', 'on', 'enable', 'enabled')
+                applied.append(f'status set to {"Active" if normalized else "Inactive"}')
+            elif field == 'trigger_type':
+                resolved = CreateWorkflowAction._resolve_trigger(normalized)
+                if resolved:
+                    normalized = resolved
+                    applied.append(f'trigger set to {normalized}')
+                else:
+                    return (
+                        f'I could not understand the trigger "{value}". '
+                        f'Try something like "lead_created" or "task_completed".'
+                    )
+            else:
+                applied.append(f'{field} set to "{normalized}"')
+            setattr(workflow, field, normalized)
+
+        try:
+            with transaction.atomic():
+                workflow.save()
+        except Exception as e:
+            logger.exception('Failed to update workflow for user=%s', user)
+            return f'Failed to update workflow: {e}'
+
+        changed = '\n'.join(f'  \u2022 {a}' for a in applied)
+        return f'Workflow **"{workflow.name}"** has been updated:\n{changed}'
+
+
+@register
+class DeleteWorkflowAction(BaseAction):
+    action_type = 'delete_workflow'
+    keywords = frozenset({'delete', 'remove', 'erase', 'cancel', 'workflow', 'automation', 'rule'})
+    patterns = [
+        re.compile(r'(delete|remove|erase|cancel)\s+workflow\b'),
+        re.compile(r'(delete|remove|erase|cancel).*\b(workflow|automation|rule)\b'),
+        re.compile(r'(?:delete|remove|erase|cancel)\s+(?=[a-zA-Z])'),
+    ]
+
+    def _parse(self, text):
+        body = text
+        body = re.sub(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'(?:delete|remove|erase|cancel)\s+',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = _strip_leading_noise(body)
+        body = re.sub(r'^(?:workflows?|automations?|rules?)\s+', '', body, flags=re.IGNORECASE).strip()
+        body = re.sub(
+            r'\s+from\s+(?:the\s+)?(?:workflows?|automations?|rules?)[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        body = re.sub(
+            r'\s+(?:workflows?|automations?|rules?)[.,;:]*\s*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        return _extract_title(body)
+
+    def execute(self, text, user):
+        name = self._parse(text)
+        if not name:
+            return 'I need a workflow name to delete. Which workflow should I delete?'
+
+        from workflows.models import Workflow
+        from django.db import transaction
+
+        qs = user.workflows.all()
+        workflow = qs.filter(name__icontains=name).first()
+        if not workflow:
+            workflow = qs.filter(name__iexact=name).first()
+        if not workflow:
+            return f'I could not find a workflow matching "{name}".'
+
+        try:
+            with transaction.atomic():
+                workflow.delete()
+        except Exception as e:
+            logger.exception('Failed to delete workflow for user=%s', user)
+            return f'Failed to delete workflow: {e}'
+
+        return f'Workflow **"{name}"** has been deleted.'
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -4331,7 +5698,7 @@ class ComposeEmailAction(BaseAction):
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
             r'(?:write|draft|compose|create|send)\s+'
-            r'(?:an?\s+)?(?:follow[-\s]up\s+)?(?:email|mail)\s+(?:to|for)\s+',
+            r'(?:an?\s+)?(?:\w+(?:\s+\w+)*\s+)?(?:follow[-\s]up\s+)?(?:email|mail)\s+(?:to|for)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
 
@@ -4377,11 +5744,13 @@ class ComposeEmailAction(BaseAction):
 
         return params
 
-    def _build_prompt(self, recipient_name, email_addr, company, position, purpose, sender_name, sender_email, sender_company):
+    def _build_prompt(self, recipient_name, email_addr, company, position, purpose,
+                      sender_name, sender_email, sender_company, crm_context='',
+                      crm_source=''):
         lines = [
             'You are a professional email writer for a CRM platform.',
             'Generate ONLY the subject and email body.',
-            'Do NOT include To, From, or signature — those are added by the system.',
+            'Do NOT include To, From, or signature -- those are added by the system.',
             '',
             '--- RECIPIENT ---',
             f'Name: {recipient_name or "Unknown"}',
@@ -4392,6 +5761,8 @@ class ComposeEmailAction(BaseAction):
             lines.append(f'Company: {company}')
         if position:
             lines.append(f'Position: {position}')
+        if crm_source:
+            lines.append(f'CRM Source: {crm_source}')
         if purpose:
             lines.append(f'Purpose / Topic: {purpose}')
 
@@ -4404,21 +5775,71 @@ class ComposeEmailAction(BaseAction):
         if sender_company:
             lines.append(f'Company: {sender_company}')
 
+        if crm_context:
+            lines += [
+                '',
+                '--- CRM CONTEXT (use these actual values in the email) ---',
+                crm_context,
+            ]
+
         lines += [
             '',
-            'Instructions:',
-            '- Write in a professional yet warm tone.',
-            '- Keep the email concise (3-5 sentences).',
-            '- Start the body with "Dear <First Name>," as the salutation.',
-            '- Use proper closing before the system signature.',
-            '- NEVER include "To:", "From:", or a signature block in the body.',
-            '- NEVER use placeholders like [Your Name], Your Name, or [Your Email].',
-            '- If recipient email is not known, address them by name without email.',
+            '--- STRICT RULES (VIOLATION = REJECTED) ---',
+            '',
+            '1. PLAIN TEXT ONLY. Never use markdown, **bold**, bullets, tables, or code blocks.',
+            '',
+            '2. SALUTATION: "Dear <First Name>," or "Hello <First Name>,".',
+            '   Never "Hi there", "Hey", "Greetings", "To whom it may concern".',
+            '   Use the recipient first name from the RECIPIENT section above.',
+            '',
+            '3. BODY: Introduction. Purpose. Relevant information. Professional closing.',
+            '   Use natural language -- no AI-sounding or robotic wording.',
+            '   Reference any CRM data (event title, date, time, meeting link, task, campaign) naturally.',
+            '',
+            '4. SIGNATURE: Do NOT include any signature in the body.',
+            '   The system appends "Best regards,\n\nName\nEmail" automatically.',
+            '',
+            '5. ZERO PLACEHOLDERS. The following are FORBIDDEN:',
+            '   [Your Name] [Your Title] [Your Company] [Company Name] [Your Email]',
+            '   [Phone] [Phone number] [Your PhoneNumber] [Website] [LinkedIn] [Calendly]',
+            '   [Date] [Time] [Meeting Link] [Location] [Topic 1] [Insert ...]',
+            '   [Please confirm ...] [Office address ...] [TBD] [Proposal] [Key Topic]',
+            '   [Attendee Name] [Product Name] [Calendar Link] [Any Placeholder]',
+            '',
+            '6. USE ACTUAL DATA from RECIPIENT, SENDER, and CRM CONTEXT sections above.',
+            '   - Recipient name is "{0}". Use "Dear {0}," as salutation.'.format(
+                (recipient_name or '').split()[0] if recipient_name else 'there'),
+            '   - If a meeting title is in CRM CONTEXT, reference it in the body.',
+            '   - If a meeting date/time exists, use it naturally (do NOT write "[Date]").',
+            '   - If a meeting link exists, include it. Otherwise omit the section entirely.',
+            '   - If a task describes the topic, reference it naturally in the body.',
+            '',
+            '7. WHEN DATA IS UNAVAILABLE, REWRITE NATURALLY:',
+            '   BAD:  "Meeting Link: [Meeting Link]"',
+            '   GOOD: (omit the section entirely)',
+            '   BAD:  "Time: [Time]"',
+            '   GOOD: "at the scheduled time"',
+            '   BAD:  "Product: [Product Name]"',
+            '   GOOD: "our CRM platform"',
+            '   BAD:  "Date: [Date]"',
+            '   GOOD: "tomorrow" or "next week"',
+            '   BAD:  "Dear [Attendee Name]"',
+            '   GOOD: "Dear Rahul,"',
+            '   BAD:  "[Company Name]"',
+            '   GOOD: (leave blank if not available)',
+            '',
+            '8. Subject: professional, short, specific (8-12 words).',
+            '   Examples: "Tomorrow\'s Meeting Confirmation",',
+            '   "Follow-up After Yesterday\'s Discussion",',
+            '   "Proposal for CRM Automation", "Thank You for Your Time".',
+            '',
+            '9. Keep the email concise (3-5 sentences).',
+            '   The email must be immediately sendable with zero editing.',
             '',
             'Respond ONLY with valid JSON (no markdown, no code fences):',
             '{',
             '  "subject": "<subject line>",',
-            '  "body": "<email body — salutation + message + closing line only>"',
+            '  "body": "<email body -- salutation + message + closing line only>"',
             '}',
         ]
         return '\n'.join(lines)
@@ -4485,6 +5906,107 @@ class ComposeEmailAction(BaseAction):
         if body:
             return body + '\n\n' + sig
         return sig
+
+    @staticmethod
+    def _clean_placeholders(text, sender_company=None):
+        """Strip every remaining ``[...]`` placeholder, orphaned label lines,
+        placeholder sentences, and divider lines from the LLM-generated text.
+
+        Never removes real content — only purges tokens the model
+        hallucinated because it lacked the actual value.
+        """
+        if not text:
+            return text
+
+        # 1 — Replace known sender placeholders with real values (if
+        #     available) BEFORE line-level removal so the replacement
+        #     takes effect and the line is not discarded entirely.
+        text = re.sub(
+            r'\[(?:'
+            r'Your\s+Title[^\]]*|your\s+title[^\]]*'
+            r'|YourTitle[^\]]*|yourtitle[^\]]*'
+            r'|Your\s+Phone\s*[Nn]umber[^\]]*'
+            r'|your\s+phone\s*[Nn]umber[^\]]*'
+            r'|Position[^\]]*|position[^\]]*'
+            r'|Company\b(?!\s*[Nn]ame)[^\]]*'
+            r'|company\b(?!\s*[Nn]ame)[^\]]*'
+            r'|Phone\s+[Nn]umber[^\]]*|phone\s+[Nn]umber[^\]]*'
+            r'|Phone\b[^\]]*|phone\b[^\]]*'
+            r'|Website\b[^\]]*|website\b[^\]]*'
+            r'|LinkedIn\b[^\]]*|linkedin\b[^\]]*'
+            r'|Calendly\b[^\]]*|calendly\b[^\]]*'
+            r')\]',
+            '', text,
+        )
+        if sender_company:
+            text = re.sub(
+                r'\[(?:Your\s+Company|your\s+company'
+                r'|Company\s+Name|company\s+name)\]',
+                sender_company, text,
+            )
+        else:
+            text = re.sub(
+                r'\s*\[(?:Your\s+Company|your\s+company'
+                r'|Company\s+Name|company\s+name)\]',
+                '', text,
+            )
+
+        # 2 — Remove entire lines whose only purpose was to be a template
+        #     fill-in header, e.g. ``Key Topic 1: budget planning`` or
+        #     ``Insert time: tomorrow``.  Must run BEFORE orphaned-label
+        #     removal so the full line is still intact.
+        text = re.sub(
+            r'^[ \t]*(?:'
+            r'Key\s+Topic\s+\d'
+            r'|Specific\s+Resource'
+            r'|Insert\s+\w+'
+            r')\s*[:–—-]?.*\n?',
+            '', text, flags=re.MULTILINE | re.IGNORECASE,
+        )
+
+        # 3 — Remove orphaned label headers that have no value after them
+        #     e.g. "Meeting Link:" on its own line.
+        text = re.sub(
+            r'^[ \t]*(?:'
+            r'Meeting\s+Link|Link|Video\s+[Cc]all|[Cc]all\s+[Ll]ink'
+            r'|Location|Time|Date|Phone|In[- ]person'
+            r'|Your\s+Title|Your\s+Company|Company\s+Name|Position|Designation'
+            r'|Add\s+[Dd]etails'
+            r'|LinkedIn|Calendly|Budget|Team'
+            r'|Decision\s+Makers?'
+            r'|Proposed\s+Date|Proposed\s+Time'
+            r')\s*:\s*\n?',
+            '', text, flags=re.MULTILINE,
+        )
+
+        # 4 — Remove entire lines that still contain ``[...]`` (including
+        #     sentences with inline placeholders like "Send by [date]").
+        text = re.sub(
+            r'^[^\n]*\[[^\]]*\][^\n]*\n?',
+            '', text, flags=re.MULTILINE,
+        )
+
+        # 5 — Remove any ``---`` / ``___`` divider lines the model inserted
+        text = re.sub(r'^[ \t]*[-_]{3,}[ \t]*\n?', '', text, flags=re.MULTILINE)
+
+        # 6 — Catch any stray bracket fragments the line-level pass missed
+        text = re.sub(r'\s*\[[^\]]*\]\s*', ' ', text)
+        text = text.replace('[', '')
+        text = text.replace(']', '')
+
+        # 7 — Remove any "Quick recap:" / "Key points:" / "Summary:" or
+        #     similar headers that ended up empty after placeholder removal.
+        text = re.sub(
+            r'^[ \t]*(?:Quick\s+recap|Key\s+points?|Summary|Notes)[ \t]*:?\s*\n?',
+            '', text, flags=re.MULTILINE | re.IGNORECASE,
+        )
+
+        # 8 — Clean up whitespace artifacts left behind
+        text = re.sub(r'  +', ' ', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r'\n[ \t]+', '\n', text)
+
+        return text.strip()
 
     def _parse_json_response(self, text):
         cleaned = text.strip()
@@ -4621,6 +6143,155 @@ class ComposeEmailAction(BaseAction):
 
         return results
 
+    def _gather_crm_context(self, recipient_name, email_addr, user):
+        """Collect CRM data (events, tasks, campaigns) related to the
+        recipient so the LLM can use actual values instead of placeholders."""
+        if not user or not user.is_authenticated:
+            return ''
+        context_parts = []
+
+        from calendars.models import Event as CalendarEvent
+        from tasks.models import Task
+        from campaigns.models import Campaign
+        from contacts.models import Contact
+        from leads.models import Lead
+        from workflows.models import Workflow, Notification
+        from django.db.models import Q
+
+        name_lower = recipient_name.lower().strip() if recipient_name else ''
+        # Extract meaningful keywords from the recipient text (skip noise words)
+        stopwords = {'the', 'a', 'an', 'to', 'for', 'of', 'in', 'on', 'at', 'by',
+                     'with', 'from', 'and', 'or', 'attendee', 'participant',
+                     'tomorrow', 'today', 'yesterday', 'next', 'this', 'that',
+                     'meeting', 'email', 'mail', 'write', 'draft', 'compose'}
+        keywords = [w for w in name_lower.split() if w not in stopwords and len(w) > 2]
+
+        def _match_q(field, term):
+            """Build a case-insensitive contains query for a single term."""
+            return Q(**{f'{field}__icontains': term})
+
+        def _entity_matches(model, fields, filters=None):
+            """Search a model for entities matching any keyword across fields."""
+            if not keywords:
+                return model.objects.none()
+            q = Q()
+            for kw in keywords:
+                for f in fields:
+                    q |= _match_q(f, kw)
+            base = model.objects.filter(q)
+            if filters:
+                base = base.filter(**filters)
+            return base.distinct()
+
+        # ── 1. Calendar events ──
+        events = _entity_matches(
+            CalendarEvent,
+            ['title', 'description', 'location'],
+            {'owner': user, 'status': 'scheduled'},
+        ).order_by('start_date', 'start_time')[:3]
+        for ev in events:
+            parts = [f'Event: {ev.title}']
+            if ev.start_date:
+                parts.append(f'Date: {ev.start_date}')
+            if ev.start_time:
+                parts.append(f'Time: {ev.start_time}'
+                             + (f' - {ev.end_time}' if ev.end_time else ''))
+            if ev.location:
+                parts.append(f'Location: {ev.location}')
+            if ev.meeting_link:
+                parts.append(f'Meeting Link: {ev.meeting_link}')
+            context_parts.append(' | '.join(parts))
+
+        # ── 2. Tasks ──
+        tasks = _entity_matches(
+            Task,
+            ['title', 'description'],
+            {'owner': user},
+        ).exclude(status='completed').order_by('due_date', 'due_time')[:3]
+        for t in tasks:
+            parts = [f'Task: {t.title}']
+            if t.due_date:
+                parts.append(f'Due: {t.due_date}')
+            if t.due_time:
+                parts.append(f'Due Time: {t.due_time}')
+            context_parts.append(' | '.join(parts))
+
+        # ── 3. Campaigns ──
+        campaigns = _entity_matches(
+            Campaign,
+            ['name', 'subject', 'body'],
+            {'owner': user},
+        ).order_by('-created_at')[:3]
+        for c in campaigns:
+            parts = [f'Campaign: {c.name}']
+            if c.subject:
+                parts.append(f'Subject: {c.subject}')
+            context_parts.append(' | '.join(parts))
+
+        # ── 4. Contacts ──
+        contact_fields = ['full_name', 'email', 'company', 'job_title', 'notes']
+        if keywords:
+            q = Q()
+            for kw in keywords:
+                for f in contact_fields:
+                    q |= _match_q(f, kw)
+            contacts = user.contacts.filter(q).distinct()[:3]
+            for c in contacts:
+                parts = [f'Contact: {c.full_name}']
+                if c.email:
+                    parts.append(f'Email: {c.email}')
+                if c.company:
+                    parts.append(f'Company: {c.company}')
+                if c.job_title:
+                    parts.append(f'Position: {c.job_title}')
+                if c.notes:
+                    parts.append(f'Notes: {c.notes[:200]}')
+                context_parts.append(' | '.join(parts))
+
+        # ── 5. Leads ──
+        leads = _entity_matches(
+            Lead,
+            ['lead_name', 'contact_person', 'email', 'notes'],
+            {'owner': user},
+        ).order_by('-created_at')[:3]
+        for l in leads:
+            parts = [f'Lead: {l.lead_name}']
+            if l.email:
+                parts.append(f'Email: {l.email}')
+            if l.get_status_display():
+                parts.append(f'Status: {l.get_status_display()}')
+            if l.expected_revenue:
+                parts.append(f'Expected Revenue: ${l.expected_revenue:,.2f}')
+            context_parts.append(' | '.join(parts))
+
+        # ── 6. Workflows ──
+        workflows = _entity_matches(
+            Workflow,
+            ['name', 'description'],
+            {'owner': user},
+        ).order_by('-created_at')[:3]
+        for w in workflows:
+            parts = [f'Workflow: {w.name}']
+            parts.append(f'Active: {"Yes" if w.is_active else "No"}')
+            if w.description:
+                parts.append(f'Description: {w.description[:200]}')
+            context_parts.append(' | '.join(parts))
+
+        # ── 7. Notifications ──
+        notifications = _entity_matches(
+            Notification,
+            ['title', 'message'],
+            {'owner': user},
+        ).order_by('-created_at')[:3]
+        for n in notifications:
+            parts = [f'Notification: {n.title}']
+            parts.append(f'Read: {"Yes" if n.is_read else "No"}')
+            if n.message:
+                parts.append(f'Message: {n.message[:200]}')
+            context_parts.append(' | '.join(parts))
+
+        return '\n'.join(context_parts) if context_parts else ''
+
     def execute(self, text, user):
         if not user or not user.is_authenticated:
             return None
@@ -4629,6 +6300,9 @@ class ComposeEmailAction(BaseAction):
         recipient_name = params.get('recipient', '').strip()
         email_addr = params.get('email_address', '').strip() or None
         purpose = params.get('purpose', '').strip()
+        company_name = None
+        position_name = None
+        crm_source = ''
 
         if email_addr:
             # Direct email provided — skip CRM module search
@@ -4645,12 +6319,6 @@ class ComposeEmailAction(BaseAction):
             # Search across CRM modules
             people = self._find_matching_people(recipient_name, user)
 
-            if not people:
-                return (
-                    "I couldn't find this person in your CRM.\n\n"
-                    'Please provide an email address.'
-                )
-
             if len(people) > 1:
                 lines = [
                     f'I found multiple people matching **"{recipient_name}"**:',
@@ -4666,21 +6334,27 @@ class ComposeEmailAction(BaseAction):
                 lines.append('Which one would you like to email? Please specify.')
                 return '\n'.join(lines)
 
-            person = people[0]
-            recipient_name = person['name']
-            email_addr = person['email'] or None
-            company_name = person['company'] or None
-            position_name = person.get('position') or None
+            if people:
+                person = people[0]
+                recipient_name = person['name']
+                email_addr = person['email'] or None
+                company_name = person['company'] or None
+                position_name = person.get('position') or None
+                crm_source = person.get('source', '')
+            # else: recipient not found in CRM — continue with parsed name
 
         # Retrieve logged-in sender info
         sender_name = user.get_full_name() or user.username
         sender_email = user.email or ''
         sender_company = (getattr(user, 'company', None) or '').strip() or None
 
+        # Gather CRM context for personalised email content
+        crm_context = self._gather_crm_context(recipient_name, email_addr, user)
+
         # Build prompt and call LLM
         prompt = self._build_prompt(
             recipient_name, email_addr, company_name, position_name, purpose,
-            sender_name, sender_email, sender_company,
+            sender_name, sender_email, sender_company, crm_context, crm_source,
         )
 
         from assistant.services.ai_service import AIService
@@ -4703,6 +6377,30 @@ class ComposeEmailAction(BaseAction):
         # Replace any hallucinated placeholders with real sender info
         body = self._post_process_body(body, sender_name, sender_email)
 
+        # Final cleanup — remove every remaining placeholder token the LLM
+        # may have included despite the prompt instructions.
+        body = self._clean_placeholders(body, sender_company)
+
+        # Ensure subject always exists
+        if not subject:
+            subject = 'Follow-up' if purpose else 'Hello'
+
+        # Strip any trailing LLM-generated closing from body, then append the
+        # complete canonical signature (Best regards, + name + email).
+        body = re.sub(
+            r'(?:\n\s*)?'
+            r'(?:Best\s+regards|Kind\s+regards|Regards|Sincerely|'
+            r'Thanks|Thank\s+you|Warmly|Best|Cheers|'
+            r'Yours\s+truly|Yours\s+sincerely|Respectfully)'
+            r'[,!.]?[ \t]*'
+            r'(?:\n.*)*$',
+            '', body, flags=re.IGNORECASE | re.DOTALL,
+        ).rstrip('\n')
+        sig_lines = ['Best regards,', '', sender_name]
+        if sender_email:
+            sig_lines.extend(['', sender_email])
+        body = body + '\n\n' + '\n'.join(sig_lines) if body else '\n'.join(sig_lines)
+
         to_lines = ['To:']
         if email_addr:
             to_lines.append(f'{recipient_name} <{email_addr}>')
@@ -4712,14 +6410,37 @@ class ComposeEmailAction(BaseAction):
         from_lines = ['From:']
         from_lines.append(f'{sender_name} <{sender_email}>')
 
-        lines = ['\n'.join(to_lines), '', '\n'.join(from_lines), '']
-        if subject:
-            lines.append(f'Subject:\n{subject}')
-            lines.append('')
-        lines.append('Body:')
-        lines.append('')
-        lines.append(body)
-        return '\n'.join(lines)
+        lines = [
+            '\n'.join(to_lines),
+            '',
+            '\n'.join(from_lines),
+            '',
+            f'Subject:\n{subject}',
+            '',
+            'Body:',
+            '',
+            body,
+        ]
+
+        result = '\n'.join(lines)
+
+        # Validate all required sections are present
+        required = ['To:', 'From:', 'Subject:', 'Body:', 'Best regards,']
+        missing = [s for s in required if s not in result]
+        if missing:
+            logger.error(
+                'Email output missing sections: %s. Regenerating...', missing,
+            )
+            result = (
+                f'To:\n{recipient_name}\n\n'
+                f'From:\n{sender_name}\n\n'
+                f'Subject:\n{subject}\n\n'
+                f'Body:\n\nDear {recipient_name.split()[0] if recipient_name else "there"},\n\n'
+                f'{purpose or "I hope this message finds you well."}\n\n'
+                f'{'\n'.join(sig_lines)}'
+            )
+
+        return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -4739,10 +6460,12 @@ class AnalyticsAction(BaseAction):
     keywords = frozenset({
         'how many', 'count', 'total', 'number of', 'how much',
         'expected revenue', 'revenue',
+        'busy', 'packed', 'schedule', 'free', 'look',
     })
     patterns = [
         re.compile(r'(?:how many|count|total|number of|how much)'),
         re.compile(r'expected revenue'),
+        re.compile(r'\b(?:how\s+(?:busy|packed)|am\s+i\s+(?:busy|free)|what\s+(?:does\s+)?(?:my\s+)?(?:week|schedule|day)\s+look)\b'),
     ]
 
     # ── Entity detection (ordered: more specific first) ──
@@ -4795,6 +6518,13 @@ class AnalyticsAction(BaseAction):
         'last_month': 'last month',
         'this_year': 'this year',
     }
+
+    _BUSY_RE = re.compile(
+        r'\b(?:busy|packed|schedule|am\s+i\s+(?:busy|free)|'
+        r'how\s+(?:busy|packed)|'
+        r'what\s+(?:does\s+)?(?:my\s+)?(?:week|schedule|day)\s+look)\b',
+        re.IGNORECASE,
+    )
 
     # ------------------------------------------------------------------
     # Detection helpers
@@ -4968,6 +6698,73 @@ class AnalyticsAction(BaseAction):
         return f'Your total expected revenue is ${total:,.2f}.'
 
     # ------------------------------------------------------------------
+    # Busyness / schedule summary
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _count_busyness(user, time_key):
+        from django.db.models import Q
+        from datetime import date
+
+        start, end = AnalyticsAction._get_date_range(time_key or 'today')
+        if not start:
+            start = end = date.today()
+
+        tasks = user.tasks.filter(
+            ~Q(status='completed'),
+            due_date__gte=start,
+            due_date__lte=end,
+        )
+        task_count = tasks.count()
+
+        events = user.events.filter(
+            status='scheduled',
+            start_date__gte=start,
+            start_date__lte=end,
+        )
+        event_count = events.count()
+
+        return task_count, event_count, start, end
+
+    @staticmethod
+    def _format_busyness(user, time_key):
+        task_count, event_count, start, end = AnalyticsAction._count_busyness(user, time_key)
+        time_label = AnalyticsAction._TIME_LABELS.get(time_key, '')
+
+        total = task_count + event_count
+
+        logger.info(
+            'Busyness for %s (time_key=%s): tasks=%d, events=%d',
+            user, time_key, task_count, event_count,
+        )
+
+        if total == 0:
+            if time_label:
+                return f'You have nothing scheduled {time_label}. You\'re free!'
+            return 'You have nothing scheduled. You\'re free!'
+
+        parts = []
+        if task_count:
+            parts.append(f'{task_count} task{"s" if task_count != 1 else ""}')
+        if event_count:
+            names = 'meetings' if event_count > 1 else 'meeting'
+            parts.append(f'{event_count} {names}')
+
+        item_str = ' and '.join(parts)
+
+        if total <= 2:
+            busyness = 'not very busy'
+        elif total <= 5:
+            busyness = 'moderately busy'
+        else:
+            busyness = 'very busy'
+
+        if time_label:
+            cap = time_label[0].upper() + time_label[1:] if time_label else ''
+            return f'{cap}, you have {item_str}. You\'re {busyness}!'
+        return f'You have {item_str}. You\'re {busyness}!'
+
+    # ------------------------------------------------------------------
     # Response formatting
     # ------------------------------------------------------------------
 
@@ -5035,6 +6832,17 @@ class AnalyticsAction(BaseAction):
         # Detect entity
         entity = self._detect_entity(text_lower)
         if not entity:
+            if self._BUSY_RE.search(text_lower):
+                if not time_key:
+                    if re.search(r'\bweek\b', text_lower):
+                        time_key = 'this_week'
+                    elif re.search(r'\bmonth\b', text_lower):
+                        time_key = 'this_month'
+                    elif re.search(r'\byear\b', text_lower):
+                        time_key = 'this_year'
+                    else:
+                        time_key = 'today'
+                return self._format_busyness(user, time_key)
             return self._help_message()
 
         status = self._detect_filter(text_lower, self._STATUS_MAP)

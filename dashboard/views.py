@@ -7,6 +7,7 @@ from tasks.models import Task
 from calendars.models import Event
 from django.utils import timezone
 from datetime import timedelta
+from .services import DashboardIntelligenceService
 
 
 class DashboardHomeView(LoginRequiredMixin, TemplateView):
@@ -70,4 +71,18 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         context['today_events'] = today_events
         context['upcoming_events'] = upcoming_events
         context['today'] = today
+
+        # ── AI Dashboard Intelligence ──────────────────────────────
+        svc = DashboardIntelligenceService(user)
+
+        context.update(svc.get_card_stats())
+        context['ai_recent_activity'] = svc.get_recent_activity()
+        context['ai_upcoming_events'] = svc.get_upcoming_events()
+        context['ai_insights'] = svc.get_ai_insights()
+        context['ai_lead_funnel'] = svc.get_lead_funnel()
+        context['ai_task_summary'] = svc.get_task_summary()
+        context['ai_campaign_summary'] = svc.get_campaign_summary()
+        context['ai_workflow_summary'] = svc.get_workflow_summary()
+        context['ai_notification_summary'] = svc.get_notification_summary()
+
         return context

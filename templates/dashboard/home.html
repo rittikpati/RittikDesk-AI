@@ -264,6 +264,110 @@
   </div>
 </div>
 
+<!-- AI Dashboard Intelligence -->
+<div class="dash-row">
+  <div class="dash-col-12">
+    <div class="dash-section-heading">
+      <i class="fas fa-microchip" style="color:var(--dash-brand);margin-right:8px"></i>
+      AI Dashboard Intelligence
+    </div>
+  </div>
+</div>
+
+<div class="dash-row">
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">High Priority Leads</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_high_priority_leads }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(255,107,107,0.12);color:#FF6B6B"><i class="fas fa-exclamation-triangle"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Converted Leads</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_converted_leads }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(0,217,166,0.12);color:#00D9A6"><i class="fas fa-trophy"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Today's Meetings</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_today_meetings }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(54,153,255,0.12);color:#3699FF"><i class="fas fa-calendar-day"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Upcoming Meetings</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_upcoming_meetings }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(0,180,216,0.12);color:#00B4D8"><i class="fas fa-calendar-week"></i></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dash-row">
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Active Campaigns</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_active_campaigns }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(0,217,166,0.12);color:#00D9A6"><i class="fas fa-bullhorn"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Active Workflows</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_active_workflows }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(108,99,255,0.12);color:#8B85FF"><i class="fas fa-gears"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Unread Notifications</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_unread_notifications }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(255,184,0,0.12);color:#FFB800"><i class="fas fa-bell"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="dash-stat dash-loaded">
+      <div class="dash-stat-header">
+        <div>
+          <div class="dash-stat-label">Total Emails Sent</div>
+          <div class="dash-stat-value"><span data-count="{{ ai_total_emails_sent }}">0</span></div>
+        </div>
+        <div class="dash-stat-icon" style="background:rgba(0,217,166,0.12);color:#00D9A6"><i class="fas fa-envelope"></i></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Charts -->
 <div class="dash-row">
   <div class="dash-col-7">
@@ -361,41 +465,17 @@
         <a href="#" class="dash-card-link" onclick="dashComingSoon('Activity')">View all <i class="fas fa-arrow-right"></i></a>
       </div>
       <div class="dash-activity">
+        {% for act in ai_recent_activity %}
         <div class="dash-act">
-          <div class="dash-act-dot" style="background:#6C63FF"></div>
+          <div class="dash-act-dot" style="background:{{ act.color }}"><i class="fas {{ act.icon }}" style="font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center;width:100%;height:100%"></i></div>
           <div class="dash-act-body">
-            <div class="dash-act-text">New contact <strong>Sarah Johnson</strong> added to CRM</div>
-            <div class="dash-act-time">2 min ago</div>
+            <div class="dash-act-text">{{ act.text|safe }}</div>
+            <div class="dash-act-time">{{ act.time|timesince }} ago</div>
           </div>
         </div>
-        <div class="dash-act">
-          <div class="dash-act-dot" style="background:#00D9A6"></div>
-          <div class="dash-act-body">
-            <div class="dash-act-text">Campaign <strong>Q3 Launch</strong> sent to 1,250 recipients</div>
-            <div class="dash-act-time">15 min ago</div>
-          </div>
-        </div>
-        <div class="dash-act">
-          <div class="dash-act-dot" style="background:#FFB800"></div>
-          <div class="dash-act-body">
-            <div class="dash-act-text">AI Assistant completed <strong>contact analysis</strong></div>
-            <div class="dash-act-time">1 hour ago</div>
-          </div>
-        </div>
-        <div class="dash-act">
-          <div class="dash-act-dot" style="background:#00B4D8"></div>
-          <div class="dash-act-body">
-            <div class="dash-act-text">Report <strong>Q2 Summary</strong> generated and ready</div>
-            <div class="dash-act-time">3 hours ago</div>
-          </div>
-        </div>
-        <div class="dash-act">
-          <div class="dash-act-dot" style="background:#FF6B6B"></div>
-          <div class="dash-act-body">
-            <div class="dash-act-text">Lead <strong>Mike Ross</strong> scored as hot prospect</div>
-            <div class="dash-act-time">5 hours ago</div>
-          </div>
-        </div>
+        {% empty %}
+        <div style="text-align:center;color:var(--dash-text-ter);padding:20px;font-size:0.8rem">No recent activity.</div>
+        {% endfor %}
       </div>
     </div>
   </div>
@@ -429,6 +509,186 @@
           <span class="dash-action-icon" style="background:rgba(255,184,0,0.1);color:#FFB800"><i class="fas fa-robot"></i></span>
           <span>AI Assistant</span>
         </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Insights Panel -->
+<div class="dash-row">
+  <div class="dash-col-12">
+    <div class="dash-card dash-loaded">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-brain" style="color:var(--dash-brand);margin-right:6px"></i> AI Insights</span>
+      </div>
+      <div class="dash-activity">
+        {% for insight in ai_insights %}
+        <div class="dash-act">
+          <div class="dash-act-dot" style="background:linear-gradient(135deg,#6C63FF,#E040FB);display:flex;align-items:center;justify-content:center"><i class="fas fa-lightbulb" style="font-size:10px;color:#fff"></i></div>
+          <div class="dash-act-body">
+            <div class="dash-act-text">{{ insight }}</div>
+          </div>
+        </div>
+        {% empty %}
+        <div style="text-align:center;color:var(--dash-text-ter);padding:20px;font-size:0.8rem">No insights available yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lead Funnel + Summaries -->
+<div class="dash-row">
+  <div class="dash-col-6">
+    <div class="dash-card dash-loaded" style="height:100%">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-filter" style="margin-right:6px;color:#FFB800"></i> Lead Funnel</span>
+        <a href="{% url 'leads:list' %}" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div style="padding:12px 16px">
+        {% with funnel=ai_lead_funnel %}
+        {% with total=funnel.new|add:funnel.contacted|add:funnel.qualified|add:funnel.proposal|add:funnel.won|add:funnel.lost %}
+        <div class="dash-funnel">
+          <div class="dash-funnel-item">
+            <div class="dash-funnel-label"><span class="dash-funnel-dot" style="background:#3699FF"></span> New</div>
+            <div class="dash-funnel-bar-wrap"><div class="dash-funnel-bar" style="width:{% if total %}{% widthratio funnel.new total 100 %}{% else %}0{% endif %}%;background:#3699FF"></div></div>
+            <div class="dash-funnel-count">{{ funnel.new }}</div>
+          </div>
+          <div class="dash-funnel-item">
+            <div class="dash-funnel-label"><span class="dash-funnel-dot" style="background:#8B85FF"></span> Contacted</div>
+            <div class="dash-funnel-bar-wrap"><div class="dash-funnel-bar" style="width:{% if total %}{% widthratio funnel.contacted total 100 %}{% else %}0{% endif %}%;background:#8B85FF"></div></div>
+            <div class="dash-funnel-count">{{ funnel.contacted }}</div>
+          </div>
+          <div class="dash-funnel-item">
+            <div class="dash-funnel-label"><span class="dash-funnel-dot" style="background:#00c9a7"></span> Qualified</div>
+            <div class="dash-funnel-bar-wrap"><div class="dash-funnel-bar" style="width:{% if total %}{% widthratio funnel.qualified total 100 %}{% else %}0{% endif %}%;background:#00c9a7"></div></div>
+            <div class="dash-funnel-count">{{ funnel.qualified }}</div>
+          </div>
+          <div class="dash-funnel-item">
+            <div class="dash-funnel-label"><span class="dash-funnel-dot" style="background:#ffc107"></span> Proposal</div>
+            <div class="dash-funnel-bar-wrap"><div class="dash-funnel-bar" style="width:{% if total %}{% widthratio funnel.proposal total 100 %}{% else %}0{% endif %}%;background:#ffc107"></div></div>
+            <div class="dash-funnel-count">{{ funnel.proposal }}</div>
+          </div>
+          <div class="dash-funnel-item">
+            <div class="dash-funnel-label"><span class="dash-funnel-dot" style="background:#00D9A6"></span> Won</div>
+            <div class="dash-funnel-bar-wrap"><div class="dash-funnel-bar" style="width:{% if total %}{% widthratio funnel.won total 100 %}{% else %}0{% endif %}%;background:#00D9A6"></div></div>
+            <div class="dash-funnel-count">{{ funnel.won }}</div>
+          </div>
+          <div class="dash-funnel-item">
+            <div class="dash-funnel-label"><span class="dash-funnel-dot" style="background:#FF6B6B"></span> Lost</div>
+            <div class="dash-funnel-bar-wrap"><div class="dash-funnel-bar" style="width:{% if total %}{% widthratio funnel.lost total 100 %}{% else %}0{% endif %}%;background:#FF6B6B"></div></div>
+            <div class="dash-funnel-count">{{ funnel.lost }}</div>
+          </div>
+        </div>
+        {% endwith %}
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-6">
+    <div class="dash-card dash-loaded" style="height:100%">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-check-circle" style="margin-right:6px;color:#00D9A6"></i> Task Summary</span>
+        <a href="{% url 'tasks:list' %}" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div style="padding:12px 16px">
+        {% with ts=ai_task_summary %}
+        <div class="dash-summary-grid">
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#00D9A6">{{ ts.completed }}</div>
+            <div class="dash-summary-label">Completed</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#FFB800">{{ ts.pending }}</div>
+            <div class="dash-summary-label">Pending</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#FF6B6B">{{ ts.overdue }}</div>
+            <div class="dash-summary-label">Overdue</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#3699FF">{{ ts.today }}</div>
+            <div class="dash-summary-label">Today's Tasks</div>
+          </div>
+        </div>
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dash-row">
+  <div class="dash-col-4">
+    <div class="dash-card dash-loaded" style="height:100%">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-bullhorn" style="margin-right:6px;color:#00D9A6"></i> Campaign Summary</span>
+        <a href="{% url 'campaigns:list' %}" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div style="padding:12px 16px">
+        {% with cs=ai_campaign_summary %}
+        <div class="dash-summary-grid three">
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#3699FF">{{ cs.scheduled }}</div>
+            <div class="dash-summary-label">Active</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#00D9A6">{{ cs.sent }}</div>
+            <div class="dash-summary-label">Completed</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#8888AA">{{ cs.draft }}</div>
+            <div class="dash-summary-label">Draft</div>
+          </div>
+        </div>
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-4">
+    <div class="dash-card dash-loaded" style="height:100%">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-gears" style="margin-right:6px;color:#8B85FF"></i> Workflow Summary</span>
+        <a href="{% url 'workflows:list' %}" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div style="padding:12px 16px">
+        {% with ws=ai_workflow_summary %}
+        <div class="dash-summary-grid three">
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#00D9A6">{{ ws.active }}</div>
+            <div class="dash-summary-label">Active</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#8888AA">{{ ws.disabled }}</div>
+            <div class="dash-summary-label">Disabled</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#FF6B6B">{{ ws.failed }}</div>
+            <div class="dash-summary-label">Failed</div>
+          </div>
+        </div>
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-4">
+    <div class="dash-card dash-loaded" style="height:100%">
+      <div class="dash-card-head">
+        <span class="dash-card-title"><i class="fas fa-bell" style="margin-right:6px;color:#FFB800"></i> Notification Summary</span>
+        <a href="{% url 'workflows:notifications' %}" class="dash-card-link">View all <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div style="padding:12px 16px">
+        {% with ns=ai_notification_summary %}
+        <div class="dash-summary-grid two">
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#FF6B6B">{{ ns.unread }}</div>
+            <div class="dash-summary-label">Unread</div>
+          </div>
+          <div class="dash-summary-item">
+            <div class="dash-summary-num" style="color:#8888AA">{{ ns.read }}</div>
+            <div class="dash-summary-label">Read</div>
+          </div>
+        </div>
+        {% endwith %}
       </div>
     </div>
   </div>

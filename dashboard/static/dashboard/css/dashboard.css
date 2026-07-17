@@ -1068,3 +1068,66 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.04); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.06); }
+
+/* ===== AI Dashboard Intelligence ===== */
+.dash-section-heading {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dash-text-ter);
+  padding: 8px 4px 4px;
+  display: flex;
+  align-items: center;
+}
+
+/* Lead Funnel */
+.dash-funnel { display: flex; flex-direction: column; gap: 10px; }
+.dash-funnel-item {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.78rem;
+}
+.dash-funnel-label {
+  width: 80px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 6px;
+  color: var(--dash-text-sec);
+  font-weight: 500;
+}
+.dash-funnel-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.dash-funnel-bar-wrap {
+  flex: 1; height: 18px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 4px; overflow: hidden;
+}
+.dash-funnel-bar {
+  height: 100%; border-radius: 4px;
+  transition: width 0.6s ease;
+}
+.dash-funnel-count {
+  width: 30px; text-align: right;
+  font-weight: 700; color: var(--dash-text);
+  font-size: 0.82rem;
+}
+
+/* Summary Grid */
+.dash-summary-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+}
+.dash-summary-grid.three { grid-template-columns: repeat(3, 1fr); }
+.dash-summary-grid.two { grid-template-columns: repeat(2, 1fr); }
+.dash-summary-item {
+  text-align: center; padding: 10px 4px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 8px;
+}
+.dash-summary-num { font-size: 1.4rem; font-weight: 800; line-height: 1.2; }
+.dash-summary-label {
+  font-size: 0.68rem; color: var(--dash-text-ter);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+/* AI icon inside activity dots */
+.dash-act-dot i { display: flex !important; }
