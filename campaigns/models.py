@@ -18,6 +18,7 @@ class Campaign(models.Model):
     subject = models.CharField(max_length=255)
     body = models.TextField(blank=True, help_text='Rich text content')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Draft')
+    budget = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, help_text='Campaign budget')
     scheduled_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -106,11 +106,45 @@ class ActionLayer:
 
     # Tiebreaker: when multiple actions match, prefer the one whose entity
     # keyword appears as a whole word in the text.
-    _ENTITY_KEYWORDS = {
+    # Entity-only keywords (no generic field keywords) for position-based routing.
+    _ENTITY_ROUTING_KEYWORDS = {
         'create_lead': r'\blead\b|\bprospect\b|\bdeal\b',
         'create_contact': r'\bcontact\b',
         'create_task': r'\btask\b|\bto-?do\b',
         'create_event': r'\bevent\b|\bmeeting\b|\bappointment\b',
+        'create_campaign': r'\bcampaign\b',
+        'create_notification': r'\bnotification\b|\balert\b',
+        'create_workflow': r'\bworkflow\b|\bautomation\b|\brule\b',
+        'delete_contact': r'\bcontact\b|\bperson\b',
+        'delete_lead': r'\bleads?\b|\bprospects?\b|\bdeals?\b',
+        'delete_task': r'\btasks?\b',
+        'delete_event': r'\bevents?\b|\bmeetings?\b|\bappointments?\b',
+        'delete_campaign': r'\bcampaigns?\b',
+        'delete_workflow': r'\bworkflows?\b|\bautomations?\b|\brules?\b',
+        'delete_notification': r'\bnotifications?\b|\balerts?\b',
+        'update_contact': r'\bcontact\b|\bperson\b',
+        'update_lead': r'\bleads?\b|\bprospects?\b|\bdeals?\b',
+        'update_task': r'\btasks?\b|\bto-?do\b',
+        'update_event': r'\bevents?\b|\bmeetings?\b|\bappointments?\b',
+        'update_campaign': r'\bcampaigns?\b',
+        'update_workflow': r'\bworkflows?\b|\bautomations?\b|\brules?\b',
+        'update_notification': r'\bnotifications?\b|\balerts?\b',
+        'view_contact': r'\bcontacts?\b|\bpersons?\b',
+        'view_lead': r'\bleads?\b|\bprospects?\b|\bdeals?\b',
+        'view_task': r'\btasks?\b|\bto-?dos?\b',
+        'view_event': r'\bevents?\b|\bmeetings?\b|\bappointments?\b',
+        'view_campaign': r'\bcampaigns?\b',
+        'view_workflow': r'\bworkflows?\b|\bautomations?\b|\brules?\b',
+        'view_notification': r'\bnotifications?\b|\balerts?\b',
+        'compose_email': r'\bemail\b|\bmail\b',
+        'analytics': r'\bhow\s+many\b|\bcount\b|\btotal\b|\bnumber\s+of\b|\bhow\s+much\b|\brevenue\b|\bstatistics?\b|\bstats?\b|\bsummary\b',
+    }
+    # Full keyword dict including generic field keywords (used as fallback).
+    _ENTITY_KEYWORDS = {
+        'create_lead': r'\blead\b|\bprospect\b|\bdeal\b',
+        'create_contact': r'\bcontact\b',
+        'create_task': r'\btask\b|\bto-?do\b',
+        'create_event': r'\bevent\b|\bmeeting\b|\bappointment\b|\bschedule\b|\bcalendar\b',
         'create_campaign': r'\bcampaign\b',
         'create_notification': r'\bnotification\b|\balert\b',
         'create_workflow': r'\bworkflow\b|\bautomation\b|\brule\b',
@@ -170,14 +204,46 @@ class ActionLayer:
 
         if len(matched) > 1:
             best = None
-            best_pos = len(text_lower) + 1
-            for action in matched:
-                kw = ActionLayer._ENTITY_KEYWORDS.get(action.action_type)
-                if kw:
-                    m = re.search(kw, text_lower)
-                    if m and m.start() < best_pos:
-                        best = action
-                        best_pos = m.start()
+            # Verbs like "create/add/new" are typically followed directly
+            # by the entity type ("create workflow X").  For other verbs
+            # the entity type tends to appear at the end ("show X workflow").
+            verb_first = bool(re.match(
+                r'(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+                r'(?:create|add|new|send|compose|write|draft|how\s+(?:many|much))\b',
+                text_lower,
+            ))
+
+            if verb_first:
+                best_pos = len(text_lower) + 1
+                for action in matched:
+                    kw = ActionLayer._ENTITY_ROUTING_KEYWORDS.get(action.action_type)
+                    if kw:
+                        m = re.search(kw, text_lower)
+                        if m and m.start() < best_pos:
+                            best = action
+                            best_pos = m.start()
+            else:
+                best_pos = -1
+                for action in matched:
+                    kw = ActionLayer._ENTITY_ROUTING_KEYWORDS.get(action.action_type)
+                    if kw:
+                        for m in re.finditer(kw, text_lower):
+                            if m.start() > best_pos:
+                                best = action
+                                best_pos = m.start()
+
+            # Fallback: no entity routing keyword matched → use earliest
+            # full-keyword match (original behaviour)
+            if best is None:
+                best_pos = len(text_lower) + 1
+                for action in matched:
+                    kw = ActionLayer._ENTITY_KEYWORDS.get(action.action_type)
+                    if kw:
+                        m = re.search(kw, text_lower)
+                        if m and m.start() < best_pos:
+                            best = action
+                            best_pos = m.start()
+
             if best:
                 logger.info(
                     'Action detected: %s | user=%s msg=%s',
@@ -321,6 +387,243 @@ _ENTITY_LIST_REFS = {
     'view_workflow': frozenset({'workflow', 'workflows', 'automation', 'automations', 'rule', 'rules'}),
     'view_notification': frozenset({'notification', 'notifications', 'alert', 'alerts'}),
 }
+
+
+# ── View filter helpers for "show all pending tasks" type queries ──
+
+_VIEW_FILTER_CONFIGS = {
+    'view_task': {
+        'entity_words': frozenset({'task', 'tasks', 'todo', 'todos', 'to-do', 'to-dos'}),
+        'label': 'Tasks',
+        'format_item': lambda t: f'{t.title} - {t.get_status_display()}',
+        'filters': {
+            'status': {
+                'field': 'status',
+                'map': {
+                    'pending': 'pending', 'todo': 'pending', 'not started': 'pending', 'open': 'pending',
+                    'in progress': 'in_progress', 'in-progress': 'in_progress', 'doing': 'in_progress', 'started': 'in_progress',
+                    'completed': 'completed', 'done': 'completed', 'finished': 'completed',
+                }
+            },
+            'priority': {
+                'field': 'priority',
+                'map': {
+                    'low': 'low', 'minor': 'low',
+                    'medium': 'medium', 'normal': 'medium', 'moderate': 'medium',
+                    'high': 'high', 'important': 'high',
+                }
+            },
+        },
+    },
+    'view_lead': {
+        'entity_words': frozenset({'lead', 'leads', 'prospect', 'prospects', 'deal', 'deals'}),
+        'label': 'Leads',
+        'format_item': lambda l: f'{l.lead_name} - {l.get_status_display()}',
+        'filters': {
+            'status': {
+                'field': 'status',
+                'map': {
+                    'new': 'New', 'contacted': 'Contacted', 'qualified': 'Qualified',
+                    'proposal sent': 'Proposal Sent', 'proposal': 'Proposal Sent',
+                    'negotiation': 'Negotiation', 'won': 'Won', 'lost': 'Lost', 'closed': 'Closed',
+                }
+            },
+            'priority': {
+                'field': 'priority',
+                'map': {
+                    'low': 'Low', 'minor': 'Low',
+                    'medium': 'Medium', 'normal': 'Medium', 'moderate': 'Medium',
+                    'high': 'High', 'important': 'High',
+                    'urgent': 'Urgent', 'critical': 'Urgent',
+                }
+            },
+        },
+    },
+    'view_event': {
+        'entity_words': frozenset({'event', 'events', 'meeting', 'meetings', 'appointment', 'appointments'}),
+        'label': 'Events',
+        'format_item': lambda e: f"{e.title} - {e.start_date.strftime('%b %d') if e.start_date else '—'} ({e.get_status_display()})",
+        'filters': {
+            'status': {
+                'field': 'status',
+                'map': {
+                    'scheduled': 'scheduled', 'planned': 'scheduled', 'upcoming': 'scheduled',
+                    'completed': 'completed', 'done': 'completed', 'finished': 'completed', 'past': 'completed',
+                    'cancelled': 'cancelled', 'canceled': 'cancelled',
+                }
+            },
+            'type': {
+                'field': 'event_type',
+                'map': {
+                    'meeting': 'meeting', 'call': 'call', 'phone': 'call',
+                    'reminder': 'reminder', 'personal': 'personal',
+                }
+            },
+        },
+    },
+    'view_campaign': {
+        'entity_words': frozenset({'campaign', 'campaigns'}),
+        'label': 'Campaigns',
+        'format_item': lambda c: f'{c.name} - {c.get_status_display()}',
+        'filters': {
+            'status': {
+                'field': 'status',
+                'map': {
+                    'draft': 'Draft',
+                    'scheduled': 'Scheduled',
+                    'sent': 'Sent', 'running': 'Sent', 'active': 'Sent',
+                }
+            },
+        },
+    },
+    'view_workflow': {
+        'entity_words': frozenset({'workflow', 'workflows', 'automation', 'automations', 'rule', 'rules'}),
+        'label': 'Workflows',
+        'format_item': lambda w: f'{w.name} - {"Active" if w.is_active else "Inactive"}',
+        'filters': {
+            'active': {
+                'field': 'is_active',
+                'map': {
+                    'active': True, 'enabled': True, 'on': True,
+                    'inactive': False, 'disabled': False, 'off': False,
+                }
+            },
+        },
+    },
+    'view_notification': {
+        'entity_words': frozenset({'notification', 'notifications', 'alert', 'alerts'}),
+        'label': 'Notifications',
+        'format_item': lambda n: f'{n.title} - {"Read" if n.is_read else "Unread"} ({n.get_priority_display()})',
+        'filters': {
+            'read': {
+                'field': 'is_read',
+                'map': {
+                    'read': True, 'seen': True,
+                    'unread': False, 'new': False,
+                }
+            },
+            'priority': {
+                'field': 'priority',
+                'map': {
+                    'low': 'low', 'minor': 'low',
+                    'medium': 'medium', 'normal': 'medium', 'moderate': 'medium',
+                    'high': 'high', 'important': 'high',
+                    'urgent': 'high', 'critical': 'high',
+                }
+            },
+        },
+    },
+}
+
+
+def _apply_entity_filter(raw_name, qs, config_key):
+    """
+    Detect view filter patterns (e.g. "pending tasks", "tasks with status pending")
+    and return a formatted filtered list, or *None* if no filter matches.
+    """
+    if not raw_name:
+        return None
+    text = raw_name.lower().strip()
+    config = _VIEW_FILTER_CONFIGS.get(config_key)
+    if not config:
+        return None
+
+    entity_words = config['entity_words']
+    filters = config['filters']
+    format_item = config['format_item']
+
+    def _match_filter_against(filter_value, fcfg):
+        fv = re.sub(r'^(?:my|your|our|the|a|an|all)\s+', '', filter_value.strip().lower()).strip()
+        if not fv:
+            return None
+        fmap = fcfg['map']
+        if fv in fmap:
+            return fmap[fv]
+        for key, mapped in fmap.items():
+            key_lower = key.lower() if isinstance(key, str) else key
+            if isinstance(key_lower, str) and len(fv) > 1:
+                if fv == key_lower or key_lower.startswith(fv) or fv.startswith(key_lower):
+                    return mapped
+        return None
+
+    def _match_filter(filter_value):
+        fv = re.sub(r'^(?:my|your|our|the|a|an|all)\s+', '', filter_value.strip().lower()).strip()
+        if not fv:
+            return None
+        for fk, fcfg in filters.items():
+            res = _match_filter_against(fv, fcfg)
+            if res is not None:
+                return (fk, fcfg, res)
+        return None
+
+    # Pattern: "entity with (value) (type)" / "entity with (type) (value)"
+    m = re.match(r'^(.+?)\s+with\s+(.+)$', text)
+    if m:
+        ep = re.sub(r'^(?:my|your|our|the|a|an|all)\s+', '', m.group(1).strip()).strip()
+        ep_singular = ep.rstrip('s')
+        if ep in entity_words or ep_singular in entity_words:
+            after_with = m.group(2).strip()
+            # Try "value type" — "high priority", "won status"
+            m2 = re.match(r'^(.+?)\s+(status|priority|type|active|read)$', after_with, re.IGNORECASE)
+            if m2:
+                ftype = m2.group(2).lower()
+                fval = m2.group(1).strip()
+                if ftype in filters:
+                    res = _match_filter_against(fval, filters[ftype])
+                    if res:
+                        return _format_filtered_list(qs, format_item, (ftype, filters[ftype], res), config)
+            # Try "type value" — "status pending", "priority high"
+            m3 = re.match(r'^(status|priority|type|active|read)\s+(.+)$', after_with, re.IGNORECASE)
+            if m3:
+                ftype = m3.group(1).lower()
+                fval = m3.group(2).strip()
+                if ftype in filters:
+                    res = _match_filter_against(fval, filters[ftype])
+                    if res:
+                        return _format_filtered_list(qs, format_item, (ftype, filters[ftype], res), config)
+            # Plain value
+            res = _match_filter(after_with)
+            if res:
+                return _format_filtered_list(qs, format_item, res, config)
+
+    # Pattern: split words, locate entity word
+    words = text.split()
+    for i, w in enumerate(words):
+        if w in entity_words:
+            val_before = ' '.join(words[:i])
+            if val_before:
+                res = _match_filter(val_before)
+                if res:
+                    return _format_filtered_list(qs, format_item, res, config)
+            val_after = ' '.join(words[i + 1:])
+            if val_after:
+                val_after = re.sub(r'\s+(?:with|of|in|for|by)$', '', val_after).strip()
+                if val_after:
+                    res = _match_filter(val_after)
+                    if res:
+                        return _format_filtered_list(qs, format_item, res, config)
+            break
+
+    # Standalone filter word (entity implied by action context)
+    res = _match_filter(text)
+    if res:
+        return _format_filtered_list(qs, format_item, res, config)
+
+    return None
+
+
+def _format_filtered_list(qs, format_item, filter_result, config):
+    """Apply a matched filter, query, and return a formatted list."""
+    filter_kind, fcfg, mapped_value = filter_result
+    field = fcfg['field']
+    qs = qs.filter(**{field: mapped_value})
+    items = list(qs.order_by('-created_at'))
+    if not items:
+        return f'No {config["label"].lower()} found matching **{filter_kind}**.'
+    lines = [f'**{config["label"]}** (filtered by {filter_kind}):']
+    for i, obj in enumerate(items, 1):
+        lines.append(f'{i}. {format_item(obj)}')
+    return '\n'.join(lines)
 
 
 # ===========================================================================
@@ -650,6 +953,7 @@ _CAMPAIGN_UPDATE_FIELDS = {
     'subject': 'subject',
     'body': 'body', 'content': 'body', 'description': 'body',
     'status': 'status',
+    'budget': 'budget',
     'scheduled at': 'scheduled_at', 'scheduled_at': 'scheduled_at',
     'scheduled date': 'scheduled_at', 'scheduled time': 'scheduled_at',
     'schedule': 'scheduled_at', 'date': 'scheduled_at', 'time': 'scheduled_at',
@@ -1542,6 +1846,9 @@ class ViewTaskAction(BaseAction):
                 for i, t in enumerate(all_items, 1):
                     lines.append(f'{i}. **{t.title}** - {t.get_status_display()}')
                 return '\n'.join(lines)
+            filtered = _apply_entity_filter(title, qs, 'view_task')
+            if filtered:
+                return filtered
             return f'I could not find a task matching "{title}".'
 
         due_date = task.due_date.strftime('%b %d, %Y') if task.due_date else '—'
@@ -2472,6 +2779,25 @@ class UpdateLeadAction(BaseAction):
         params = {'updates': []}
         body = text
 
+        # Handle rename before entity type stripping (name may contain "lead")
+        if re.search(r'\brename\b', text, re.IGNORECASE) and ' to ' in body:
+            stripped = re.sub(
+                r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+                r'(?:rename)\s+',
+                '', body, flags=re.IGNORECASE,
+            ).strip()
+            m = re.match(r'^(.+?)\s+to\s+(.+)$', stripped, flags=re.IGNORECASE)
+            if m:
+                old_name = m.group(1).strip()
+                new_name = m.group(2).strip()
+                new_name = re.sub(
+                    r'\s+(?:leads?|prospects?|deals?)[.,;:]*\s*$',
+                    '', new_name, flags=re.IGNORECASE,
+                ).strip()
+                params['name'] = _extract_title(old_name)
+                params['updates'].append(('lead_name', new_name))
+                return params
+
         # 1. Strip action verb
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
@@ -2556,6 +2882,18 @@ class UpdateLeadAction(BaseAction):
         if not lead:
             lead = qs.filter(lead_name__iexact=name).first()
         if not lead:
+            # Cross-entity fallback: maybe this is a workflow or campaign rename
+            if re.search(r'\brename\b', text, re.IGNORECASE):
+                from workflows.models import Workflow
+                wf = user.workflows.filter(name__icontains=name).first()
+                if wf:
+                    uw = UpdateWorkflowAction()
+                    return uw.execute(text, user)
+                from campaigns.models import Campaign
+                camp = user.campaigns.filter(name__icontains=name).first()
+                if camp:
+                    uc = UpdateCampaignAction()
+                    return uc.execute(text, user)
             return f'I could not find a lead matching "{name}".'
 
         # Normalise and set all field values
@@ -2727,6 +3065,9 @@ class ViewLeadAction(BaseAction):
                 for i, l in enumerate(all_items, 1):
                     lines.append(f'{i}. **{l.lead_name}** - {l.get_status_display()}')
                 return '\n'.join(lines)
+            filtered = _apply_entity_filter(lead_name, qs, 'view_lead')
+            if filtered:
+                return filtered
             return f'I could not find a lead matching "{lead_name}".'
 
         revenue = f'${lead.expected_revenue:,.2f}' if lead.expected_revenue else '—'
@@ -3560,6 +3901,9 @@ class ViewEventAction(BaseAction):
                     d = e.start_date.strftime('%b %d') if e.start_date else '—'
                     lines.append(f'{i}. **{e.title}** - {d} ({e.get_status_display()})')
                 return '\n'.join(lines)
+            filtered = _apply_entity_filter(identifier, user.events.all(), 'view_event')
+            if filtered:
+                return filtered
             return f'I could not find an event matching "{identifier}".'
 
         start_date = event.start_date.strftime('%b %d, %Y') if event.start_date else '—'
@@ -3594,6 +3938,9 @@ class CreateCampaignAction(BaseAction):
         'draft': 'Draft',
         'scheduled': 'Scheduled',
         'sent': 'Sent',
+        'completed': 'Sent',
+        'done': 'Sent',
+        'finished': 'Sent',
     }
 
     def execute(self, text, user):
@@ -3788,7 +4135,6 @@ class DeleteCampaignAction(BaseAction):
         body = _strip_leading_noise(body)
         body = re.sub(r'^campaigns?\s+', '', body, flags=re.IGNORECASE).strip()
         body = re.sub(r'\s+(?:from\s+)?campaigns?[.,;:]*\s*$', '', body, flags=re.IGNORECASE).strip()
-        body = re.sub(r'^(?:ai\s+)?crm\s+', '', body, flags=re.IGNORECASE).strip()
         return _extract_title(body)
 
     def execute(self, text, user):
@@ -3903,6 +4249,9 @@ class ViewCampaignAction(BaseAction):
                 for i, c in enumerate(all_items, 1):
                     lines.append(f'{i}. **{c.name}** - {c.get_status_display()}')
                 return '\n'.join(lines)
+            filtered = _apply_entity_filter(name, qs, 'view_campaign')
+            if filtered:
+                return filtered
             return f'I could not find a campaign matching "{name}".'
         if len(matches) > 1:
             names_list = '\n'.join(f'  {i+1}. **{c.name}**' for i, c in enumerate(matches))
@@ -3931,12 +4280,13 @@ class ViewCampaignAction(BaseAction):
 class UpdateCampaignAction(BaseAction):
     action_type = 'update_campaign'
     keywords = frozenset({
-        'update', 'edit', 'change', 'modify', 'set', 'rename',
+        'update', 'edit', 'change', 'modify', 'set', 'rename', 'mark',
         'campaign', 'name', 'subject', 'status', 'body', 'content',
         'schedule', 'date', 'time',
     })
     patterns = [
         re.compile(r'(update|edit|change|modify|rename|set)\b'),
+        re.compile(r'\bmark\b'),
         re.compile(r"(campaign).*(?:'s\s+)?(?:name|subject|status|body|content|schedule)"),
         re.compile(r"(name|subject|status|body|content|schedule)\s+(?:to|as)"),
         re.compile(r"(name|subject|status|body|content|schedule)\s*:"),
@@ -3946,9 +4296,24 @@ class UpdateCampaignAction(BaseAction):
         params = {'updates': []}
         body = text
 
+        # Handle "mark (name) as (status)" pattern
+        mark_m = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'mark\s+(.+?)\s+as\s+(.+)$',
+            body, flags=re.IGNORECASE,
+        )
+        if mark_m:
+            raw_name = mark_m.group(1).strip()
+            raw_name = re.sub(r'\s+campaign$', '', raw_name, flags=re.IGNORECASE).strip()
+            raw_name = re.sub(r'^campaign\s+', '', raw_name, flags=re.IGNORECASE).strip()
+            if raw_name and raw_name.lower() not in ('campaign', 'the campaign', 'my campaign'):
+                params['name'] = raw_name
+            params['updates'].append(('status', mark_m.group(2).strip()))
+            return params
+
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:update|edit|change|modify|rename|set)\s+',
+            r'(?:update|edit|change|modify|rename|set|mark)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
 
@@ -4002,7 +4367,12 @@ class UpdateCampaignAction(BaseAction):
         params = self._parse(text)
         name = params.get('name', '').strip()
         if not name:
-            return 'I need a campaign name to update. Which campaign should I update?'
+            from campaigns.models import Campaign
+            latest = user.campaigns.order_by('-created_at').first()
+            if latest:
+                name = latest.name
+            else:
+                return 'I could not find any campaigns to update. Create one first.'
 
         from campaigns.models import Campaign
         from django.db import transaction
@@ -4025,7 +4395,11 @@ class UpdateCampaignAction(BaseAction):
         for field, value in updates:
             normalized = value.strip()
             if field == 'status':
-                normalized = normalized.title()
+                mapped = CreateCampaignAction._normalise_campaign_status(normalized)
+                if mapped:
+                    normalized = mapped
+                else:
+                    normalized = normalized.title()
                 valid = [c[0] for c in Campaign.STATUS_CHOICES]
                 if normalized not in valid:
                     return (
@@ -4172,6 +4546,9 @@ class CreateNotificationAction(BaseAction):
         body = re.sub(
             r'^(?:for|about|regarding)\s+', '', body, flags=re.IGNORECASE,
         ).strip()
+        body = re.sub(
+            r'^(?:titled|called|named)\s+', '', body, flags=re.IGNORECASE,
+        ).strip()
 
         # 2. Extract structured fields via keyword:value patterns
         _end = r'(?=\s+(?:title|message|msg|link|priority)|$)'
@@ -4278,6 +4655,9 @@ class ViewNotificationAction(BaseAction):
                     status = 'Read' if n.is_read else 'Unread'
                     lines.append(f'{i+1}. **{n.title}** - {status}')
                 return '\n'.join(lines)
+            filtered = _apply_entity_filter(title, qs, 'view_notification')
+            if filtered:
+                return filtered
             matches = list(qs.filter(title__icontains=title))
             if len(matches) == 0:
                 return f'I could not find a notification matching "{title}".'
@@ -4330,6 +4710,7 @@ class UpdateNotificationAction(BaseAction):
     patterns = [
         re.compile(r'(update|edit|change|modify|set|rename)\b'),
         re.compile(r'mark\s+(?:as\s+)?(read|unread)\b'),
+        re.compile(r'\bmark\b'),
         re.compile(r'(notification|alert).*(title|message|priority|read|status)'),
         re.compile(r'(title|message|priority)\s+(?:to|as)'),
         re.compile(r'(title|message|priority)\s*:'),
@@ -4373,6 +4754,17 @@ class UpdateNotificationAction(BaseAction):
         if mark_title:
             params['name'] = _extract_title(mark_title.group(1).strip())
             params['updates'].append(('is_read', mark_title.group(2).lower() == 'read'))
+            return params
+
+        # Pattern: "mark <name> as read/unread" (without "notification" keyword)
+        mark_name_as = re.match(
+            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
+            r'mark\s+(.+?)\s+as\s+(read|unread)\s*$',
+            text, flags=re.IGNORECASE,
+        )
+        if mark_name_as:
+            params['name'] = _extract_title(mark_name_as.group(1).strip())
+            params['updates'].append(('is_read', mark_name_as.group(2).lower() == 'read'))
             return params
 
         # Strip verb
@@ -4494,10 +4886,10 @@ class UpdateNotificationAction(BaseAction):
                     normalized = bool(value)
                 applied.append(f'marked as {"read" if normalized else "unread"}')
             elif field == 'priority':
-                return (
-                    f'Notifications do not have a priority field. '
-                    f'You can update the title, message, or mark as read/unread.'
-                )
+                raw = value.strip().lower()
+                nmap = {'low': 'low', 'minor': 'low', 'medium': 'medium', 'normal': 'medium', 'high': 'high', 'important': 'high', 'urgent': 'high', 'critical': 'high'}
+                normalized = nmap.get(raw, raw)
+                applied.append(f'priority set to "{normalized.capitalize()}"')
             else:
                 normalized = value.strip()
                 applied.append(f'{field} set to "{normalized}"')
@@ -4720,10 +5112,7 @@ class CreateWorkflowAction(BaseAction):
 
         trigger_type = params.get('trigger_type', '').strip()
         if not trigger_type:
-            return (
-                'I need a trigger for the workflow. '
-                'When should it run? (e.g. lead_created, task_completed)'
-            )
+            trigger_type = 'lead_created'
 
         from workflows.models import Workflow, WorkflowAction
         from django.db import transaction
@@ -5058,6 +5447,9 @@ class ViewWorkflowAction(BaseAction):
                 for i, w in enumerate(all_items, 1):
                     lines.append(f'{i}. **{w.name}** - {"Active" if w.is_active else "Inactive"}')
                 return '\n'.join(lines)
+            filtered = _apply_entity_filter(name, qs, 'view_workflow')
+            if filtered:
+                return filtered
             return f'I could not find a workflow matching "{name}".'
         if len(matches) > 1:
             names_list = '\n'.join(f'  {i+1}. **{w.name}**' for i, w in enumerate(matches))
@@ -5209,7 +5601,11 @@ class UpdateWorkflowAction(BaseAction):
         params = self._parse(text)
         name = params.get('name', '').strip()
         if not name:
-            return 'I need a workflow name to update. Which workflow should I update?'
+            latest = user.workflows.order_by('-created_at').first()
+            if latest:
+                name = latest.name
+            else:
+                return 'I could not find any workflows to update. Create one first.'
 
         from workflows.models import Workflow
         from django.db import transaction
@@ -5690,9 +6086,14 @@ class ComposeEmailAction(BaseAction):
     ]
 
     _EMAIL_RE = re.compile(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+')
+    _BULK_RE = re.compile(
+        r'(?:everyone|everybody|all\s+(?:contacts?|leads?|tasks?|events?|'
+        r'campaigns?|workflows?|notifications?|users?|people|persons?|of\s+them|of\s+you))',
+        re.IGNORECASE,
+    )
 
     def _parse(self, text):
-        params = {'recipient': '', 'subject': '', 'purpose': '', 'email_address': ''}
+        params = {'recipient': '', 'subject': '', 'purpose': '', 'email_address': '', 'bulk_all': False}
         body = text
 
         body = re.sub(
@@ -5728,6 +6129,27 @@ class ComposeEmailAction(BaseAction):
             if m:
                 params['purpose'] = m.group(0).strip()
                 body = body[:m.start()].strip()
+
+        # Detect bulk / "everyone" recipient
+        bulk_m = self._BULK_RE.search(body)
+        if bulk_m:
+            params['bulk_all'] = True
+            # Remove the bulk phrase from body so remaining text can be purpose
+            body = self._BULK_RE.sub('', body).strip()
+            # If nothing left, recipient is blank (will be inferred in execute)
+            if not body:
+                return params
+            # Otherwise continue parsing remaining text as purpose
+            body = re.sub(r'^', '', body).strip()
+            m2 = re.search(
+                r'\b(?:about|regarding|concerning)\s+(.+?)$',
+                body, flags=re.IGNORECASE,
+            )
+            if m2:
+                params['purpose'] = m2.group(1).strip()
+            elif 'purpose' not in params or not params['purpose']:
+                params['purpose'] = _extract_title(body)
+            return params
 
         # Detect inline email address
         m = self._EMAIL_RE.search(body)
@@ -6143,6 +6565,51 @@ class ComposeEmailAction(BaseAction):
 
         return results
 
+    @staticmethod
+    def _find_all_people(user):
+        """Gather every distinct person (name + email) from the user's
+        Contacts and Leads so the LLM can address a bulk email."""
+        if not user or not user.is_authenticated:
+            return []
+        seen = set()
+        results = []
+        from contacts.models import Contact
+        from leads.models import Lead
+        for c in user.contacts.exclude(email='').exclude(email__isnull=True):
+            key = c.email.lower().strip()
+            if key and key not in seen:
+                seen.add(key)
+                results.append({
+                    'name': c.full_name or c.email.split('@')[0],
+                    'email': c.email.strip(),
+                    'company': (c.company or '').strip(),
+                    'position': (c.job_title or '').strip(),
+                    'source': 'Contact',
+                })
+        for l in user.leads.exclude(email='').exclude(email__isnull=True):
+            key = l.email.lower().strip()
+            if key and key not in seen:
+                seen.add(key)
+                results.append({
+                    'name': l.lead_name or l.email.split('@')[0],
+                    'email': l.email.strip(),
+                    'company': (l.company or '').strip(),
+                    'position': '',
+                    'source': 'Lead',
+                })
+        if user.email:
+            key = user.email.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                results.append({
+                    'name': user.get_full_name() or user.username,
+                    'email': user.email.strip(),
+                    'company': '',
+                    'position': '',
+                    'source': 'User',
+                })
+        return results
+
     def _gather_crm_context(self, recipient_name, email_addr, user):
         """Collect CRM data (events, tasks, campaigns) related to the
         recipient so the LLM can use actual values instead of placeholders."""
@@ -6303,6 +6770,88 @@ class ComposeEmailAction(BaseAction):
         company_name = None
         position_name = None
         crm_source = ''
+        bulk_all = params.get('bulk_all', False)
+
+        # ── Bulk email to everyone ──
+        if bulk_all:
+            all_people = self._find_all_people(user)
+            if not all_people:
+                return (
+                    'I could not find any contacts or leads with email '
+                    'addresses to send to.'
+                )
+            recipient_list = [p for p in all_people if p['email']]
+            if not recipient_list:
+                return (
+                    'No recipients with email addresses were found in '
+                    'your contacts or leads.'
+                )
+
+            sender_name = user.get_full_name() or user.username
+            sender_email = user.email or ''
+            sender_company = (getattr(user, 'company', None) or '').strip() or None
+            total = len(recipient_list)
+            purpose_text = purpose or 'a general update'
+
+            to_summary = '\n'.join(
+                f'  {p["name"]} <{p["email"]}>' for p in recipient_list[:20]
+            )
+            if total > 20:
+                to_summary += f'\n  ... and {total - 20} more'
+
+            crm_context = self._gather_crm_context(
+                'All Recipients', None, user,
+            )
+            prompt = self._build_prompt(
+                'All Recipients', None, None, None, purpose_text,
+                sender_name, sender_email, sender_company, crm_context,
+                'Bulk',
+            )
+            from assistant.services.ai_service import AIService
+            from assistant.services.ai_crm_service import MockMessage
+            ai = AIService()
+            raw = ai.generate_response([MockMessage('user', prompt)])
+            raw = self._strip_reasoning(raw)
+            result = self._parse_json_response(raw)
+            if result:
+                subject = result.get('subject', '').strip()
+                body = result.get('body', '').strip()
+            else:
+                subject = ''
+                body = raw.strip()
+            body = self._post_process_body(body, sender_name, sender_email)
+            body = self._clean_placeholders(body, sender_company)
+            if not subject:
+                subject = 'Follow-up' if purpose else 'Hello'
+            body = re.sub(
+                r'(?:\n\s*)?'
+                r'(?:Best\s+regards|Kind\s+regards|Regards|Sincerely|'
+                r'Thanks|Thank\s+you|Warmly|Best|Cheers|'
+                r'Yours\s+truly|Yours\s+sincerely|Respectfully)'
+                r'[,!.]?[ \t]*'
+                r'(?:\n.*)*$',
+                '', body, flags=re.IGNORECASE | re.DOTALL,
+            ).rstrip('\n')
+            sig_lines = ['Best regards,', '', sender_name]
+            if sender_email:
+                sig_lines.extend(['', sender_email])
+            body = body + '\n\n' + '\n'.join(sig_lines) if body else '\n'.join(sig_lines)
+
+            lines = [
+                f'Email drafted for **{total} recipient(s)**',
+                '',
+                'To:',
+                to_summary,
+                '',
+                f'From:\n{sender_name} <{sender_email}>',
+                '',
+                f'Subject:\n{subject}',
+                '',
+                'Body:',
+                '',
+                body,
+            ]
+            return '\n'.join(lines)
 
         if email_addr:
             # Direct email provided — skip CRM module search
@@ -6461,10 +7010,12 @@ class AnalyticsAction(BaseAction):
         'how many', 'count', 'total', 'number of', 'how much',
         'expected revenue', 'revenue',
         'busy', 'packed', 'schedule', 'free', 'look',
+        'statistics', 'stats', 'show', 'view',
     })
     patterns = [
         re.compile(r'(?:how many|count|total|number of|how much)'),
         re.compile(r'expected revenue'),
+        re.compile(r'(?:show|view|get)\s+(?:crm\s+)?(?:statistics?|stats?|summary|report|dashboard|analytics)\b'),
         re.compile(r'\b(?:how\s+(?:busy|packed)|am\s+i\s+(?:busy|free)|what\s+(?:does\s+)?(?:my\s+)?(?:week|schedule|day)\s+look)\b'),
     ]
 
@@ -6490,6 +7041,10 @@ class AnalyticsAction(BaseAction):
         'cancelled': re.compile(r'\bcancelled?\b', re.IGNORECASE),
         'draft': re.compile(r'\bdraft\b', re.IGNORECASE),
         'sent': re.compile(r'\bsent\b', re.IGNORECASE),
+        'qualified': re.compile(r'\bqualified\b', re.IGNORECASE),
+        'contacted': re.compile(r'\bcontacted\b', re.IGNORECASE),
+        'negotiation': re.compile(r'\bnegotiation\b', re.IGNORECASE),
+        'proposal_sent': re.compile(r'\bproposal\s+sent\b', re.IGNORECASE),
         'won': re.compile(r'\bwon\b', re.IGNORECASE),
         'lost': re.compile(r'\blost\b', re.IGNORECASE),
         'unread': re.compile(r'\bunread\b', re.IGNORECASE),
@@ -6602,6 +7157,10 @@ class AnalyticsAction(BaseAction):
             mapping = {
                 'active': ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation'],
                 'inactive': ['Won', 'Lost'],
+                'qualified': ['Qualified'],
+                'contacted': ['Contacted'],
+                'negotiation': ['Negotiation'],
+                'proposal_sent': ['Proposal Sent'],
                 'won': ['Won'],
                 'lost': ['Lost'],
                 'pending': ['New', 'Contacted'],
@@ -6769,6 +7328,32 @@ class AnalyticsAction(BaseAction):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _crm_summary(user):
+        if not user or not user.is_authenticated:
+            return None
+        c = user.contacts.count()
+        l = user.leads.count()
+        t = user.tasks.count()
+        e = user.events.count()
+        ca = user.campaigns.count()
+        w = user.workflows.count()
+        n = user.notifications.count()
+        lines = [
+            '**CRM Statistics Overview**',
+            '',
+            f'Contacts:      {c}',
+            f'Leads:         {l}',
+            f'Tasks:         {t}',
+            f'Events:        {e}',
+            f'Campaigns:     {ca}',
+            f'Workflows:     {w}',
+            f'Notifications: {n}',
+            '',
+            'Tip: Ask "how many X are Y" for filtered counts.',
+        ]
+        return '\n'.join(lines)
+
+    @staticmethod
     def _format_response(entity, count, status, priority, time_key):
         display_names = {
             'contact': 'contacts',
@@ -6828,6 +7413,13 @@ class AnalyticsAction(BaseAction):
         # Special case: revenue query (SUM, not COUNT)
         if 'revenue' in text_lower:
             return self._query_revenue(user, time_key)
+
+        # Special case: overview / statistics / summary (show all counts)
+        if re.search(
+            r'\b(?:statistics?|stats?|dashboard|overview|summary)\b',
+            text_lower, re.IGNORECASE,
+        ) and not self._detect_entity(text_lower):
+            return self._crm_summary(user)
 
         # Detect entity
         entity = self._detect_entity(text_lower)

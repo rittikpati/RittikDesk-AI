@@ -141,6 +141,13 @@ class WorkflowExecutionLog(models.Model):
         return f'{self.workflow.name} — {self.get_status_display()}'
 
 
+PRIORITY_CHOICES = [
+    ('low', 'Low'),
+    ('medium', 'Medium'),
+    ('high', 'High'),
+]
+
+
 class Notification(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -150,6 +157,7 @@ class Notification(models.Model):
     message = models.TextField(blank=True)
     link = models.CharField(max_length=500, blank=True)
     is_read = models.BooleanField(default=False)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
