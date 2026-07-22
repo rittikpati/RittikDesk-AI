@@ -1,0 +1,130 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ email.subject }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'emails/css/emails.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="emails-header">
+  <h2 style="font-size:1.1rem">{{ email.subject }}</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'emails:reply' email.pk %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+      <i class="fas fa-reply me-1"></i>Reply
+    </a>
+    <a href="{% url 'emails:sent' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+      <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
+  </div>
+</div>
+
+<div class="dash-card">
+  <div class="email-detail-header">
+    <div class="email-detail-field">
+      <span class="email-detail-label">To:</span>
+      <span>{{ email.to_emails }}</span>
+    </div>
+    {% if email.cc_emails %}
+    <div class="email-detail-field">
+      <span class="email-detail-label">CC:</span>
+      <span>{{ email.cc_emails }}</span>
+    </div>
+    {% endif %}
+    {% if email.bcc_emails %}
+    <div class="email-detail-field">
+      <span class="email-detail-label">BCC:</span>
+      <span>{{ email.bcc_emails }}</span>
+    </div>
+    {% endif %}
+    <div class="email-detail-field">
+      <span class="email-detail-label">Status:</span>
+      <span class="email-status email-status--{{ email.status }}">{{ email.get_status_display }}</span>
+    </div>
+    <div class="email-detail-field">
+      <span class="email-detail-label">Priority:</span>
+      <span>{{ email.get_priority_display }}</span>
+    </div>
+    <div class="email-detail-field">
+      <span class="email-detail-label">Created:</span>
+      <span>{{ email.created_at|date:'M d, Y H:i' }}</span>
+    </div>
+    {% if email.sent_at %}
+    <div class="email-detail-field">
+      <span class="email-detail-label">Sent:</span>
+      <span>{{ email.sent_at|date:'M d, Y H:i' }}</span>
+    </div>
+    {% endif %}
+    {% if email.scheduled_time %}
+    <div class="email-detail-field">
+      <span class="email-detail-label">Scheduled:</span>
+      <span>{{ email.scheduled_time|date:'M d, Y H:i' }}</span>
+    </div>
+    {% endif %}
+    {% if email.error_message %}
+    <div class="email-detail-field">
+      <span class="email-detail-label">Error:</span>
+      <span style="color:var(--dash-red)">{{ email.error_message }}</span>
+    </div>
+    {% endif %}
+    {% if email.opened_at %}
+    <div class="email-detail-field">
+      <span class="email-detail-label">Opened:</span>
+      <span>{{ email.opened_at|date:'M d, Y H:i' }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <hr style="border-color:var(--dash-card-border);margin:1rem 0">
+
+  <div class="email-detail-body">
+    {% if email.body_html %}
+    <div>{{ email.body_html|safe|linebreaks }}</div>
+    {% elif email.body_plain %}
+    <pre style="white-space:pre-wrap;font-family:inherit;margin:0;color:var(--dash-text)">{{ email.body_plain }}</pre>
+    {% endif %}
+  </div>
+
+  {% if attachments %}
+  <hr style="border-color:var(--dash-card-border);margin:1rem 0">
+  <div>
+    <strong style="font-size:0.85rem;color:var(--dash-text-sec)">Attachments ({{ attachments|length }})</strong>
+    <div class="d-flex gap-2 flex-wrap mt-2">
+      {% for att in attachments %}
+      <a href="{{ att.file.url }}" target="_blank" class="email-attachment-badge" title="{{ att.original_filename }}">
+        <i class="fas fa-paperclip"></i>
+        {{ att.original_filename|truncatechars:30 }}
+        <small>({{ att.file_size|filesizeformat }})</small>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-card-border)">
+    {% if email.status == 'failed' %}
+    <form method="post" action="{% url 'emails:retry' email.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary btn-sm rounded-pill px-3">
+        <i class="fas fa-redo me-1"></i>Retry
+      </button>
+    </form>
+    {% endif %}
+    {% if email.status == 'queued' or email.status == 'scheduled' %}
+    <form method="post" action="{% url 'emails:cancel' email.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline-light btn-sm rounded-pill px-3" onclick="return confirm('Cancel this email?')">
+        <i class="fas fa-ban me-1"></i>Cancel
+      </button>
+    </form>
+    {% endif %}
+    <a href="{% url 'emails:delete' email.pk %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+      <i class="fas fa-trash me-1"></i>Delete
+    </a>
+  </div>
+</div>
+
+{% endblock %}

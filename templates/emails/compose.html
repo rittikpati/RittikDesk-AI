@@ -1,0 +1,151 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'emails/css/emails.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="emails-header">
+  <h2>{{ title }}</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'emails:templates' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+      <i class="fas fa-file-alt me-1"></i>Templates
+    </a>
+    <a href="{% url 'emails:smtp_config' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+      <i class="fas fa-cog me-1"></i>SMTP Settings
+    </a>
+  </div>
+</div>
+
+{% if not has_smtp %}
+<div class="dash-alert dash-alert-warning">
+  <span>No SMTP configuration found. <a href="{% url 'emails:smtp_config' %}" style="color:var(--dash-brand);text-decoration:underline">Configure SMTP</a> before sending emails.</span>
+</div>
+{% endif %}
+<div style="margin:8px 0;padding:8px 10px;font-size:11px;font-family:monospace;background:#1a1a2e;border:1px solid #e94560;border-radius:6px;color:#eee">
+<strong>SMTP DEBUG</strong><br>
+user.id={{ request.user.id }}<br>
+user.email={{ request.user.email }}<br>
+user.username={{ request.user.username }}<br>
+has_smtp={{ has_smtp }}<br>
+</div>
+
+<div class="dash-card">
+  <form method="post" enctype="multipart/form-data" id="composeForm" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="dash-alert dash-alert-error">
+      {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">To <span style="color:var(--dash-red)">*</span></label>
+        {{ form.to_emails }}
+        {% if form.to_emails.errors %}<div class="invalid-feedback d-block">{{ form.to_emails.errors.0 }}</div>{% endif %}
+        <small style="color:var(--dash-text-ter);font-size:0.7rem">Comma-separated for multiple recipients</small>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">CC</label>
+        {{ form.cc_emails }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">BCC</label>
+        {{ form.bcc_emails }}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Subject <span style="color:var(--dash-red)">*</span></label>
+        {{ form.subject }}
+        {% if form.subject.errors %}<div class="invalid-feedback d-block">{{ form.subject.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <label class="form-label small mb-0" style="color:var(--dash-text-sec)">Message</label>
+          <div class="d-flex gap-2">
+            <select class="form-control form-control-sm" style="width:auto" id="templateSelect">
+              <option value="">Load Template</option>
+              {% for tpl in templates %}
+              <option value="{{ tpl.pk }}">{{ tpl.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {{ form.body_html }}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Priority</label>
+        {{ form.priority }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Schedule Send</label>
+        {{ form.scheduled_time }}
+        <small style="color:var(--dash-text-ter);font-size:0.7rem">Leave blank to send immediately</small>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Attachments</label>
+        <input type="file" name="attachments" class="form-control" multiple>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Linked Contact</label>
+        {{ form.contact }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Linked Lead</label>
+        {{ form.lead }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Linked Deal</label>
+        {{ form.deal }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Linked Company</label>
+        {{ form.company }}
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-card-border)">
+      <button type="submit" name="action" value="send" class="btn btn-primary rounded-pill px-4 glow-btn" {% if not has_smtp %}disabled{% endif %}>
+        <i class="fas fa-paper-plane me-1"></i>Send Now
+      </button>
+      <button type="submit" name="action" value="schedule" class="btn btn-outline-light btn-sm rounded-pill px-3" {% if not has_smtp %}disabled{% endif %}>
+        <i class="fas fa-clock me-1"></i>Schedule
+      </button>
+      <button type="submit" name="action" value="draft" class="btn btn-outline-light btn-sm rounded-pill px-3">
+        <i class="fas fa-save me-1"></i>Save Draft
+      </button>
+      <a href="{% url 'emails:sent' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+document.getElementById('templateSelect')?.addEventListener('change', function() {
+  var pk = this.value;
+  if (!pk) return;
+  fetch('/emails/api/templates/' + pk + '/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      document.getElementById('{{ form.subject.id_for_label }}').value = data.subject;
+      var bodyField = document.getElementById('{{ form.body_html.id_for_label }}');
+      if (bodyField) bodyField.value = data.body_html;
+    })
+    .catch(function(err) { console.error(err); });
+});
+</script>
+{% endblock %}

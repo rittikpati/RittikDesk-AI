@@ -1,0 +1,8 @@
+{% if messages %}
+{% for message in messages %}
+<div class="dash-alert dash-alert-{{ message.tags }}">
+    <span>{{ message }}</span>
+    <button class="dash-alert-close" type="button" onclick="this.parentElement.remove()">&times;</button>
+</div>
+{% endfor %}
+{% endif %}

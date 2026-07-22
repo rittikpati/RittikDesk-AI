@@ -1,0 +1,197 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% load deals_extras %}
+
+{% block title %}Pipeline - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'deals/css/deals.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="deals-header">
+  <h2>Sales Pipeline <span class="deals-count">({{ total_deals }})</span></h2>
+  <div class="deals-toolbar">
+    <a href="{% url 'deals:list' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+      <i class="fas fa-list me-1"></i>Table View
+    </a>
+    <a href="{% url 'deals:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+      <i class="fas fa-plus me-1"></i>Add Deal
+    </a>
+  </div>
+</div>
+
+{% csrf_token %}
+
+<!-- Pipeline Stats -->
+<div class="dash-row pipeline-stats">
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value">{{ total_deals }}</div>
+    <div class="pipeline-stat-label">Total Deals</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value" style="color:#00D9A6">{{ won_deals }}</div>
+    <div class="pipeline-stat-label">Won</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value" style="color:#FF6B6B">{{ lost_deals }}</div>
+    <div class="pipeline-stat-label">Lost</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value" style="color:#3699FF">{{ open_deals }}</div>
+    <div class="pipeline-stat-label">Open</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value">${{ revenue|floatformat:0 }}</div>
+    <div class="pipeline-stat-label">Revenue</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value" style="color:#FFB800">${{ potential_revenue|floatformat:0 }}</div>
+    <div class="pipeline-stat-label">Potential</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value">${{ avg_deal_size|floatformat:0 }}</div>
+    <div class="pipeline-stat-label">Avg Size</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value" style="color:#00D9A6">{{ win_rate }}%</div>
+    <div class="pipeline-stat-label">Win Rate</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value" style="color:#FF6B6B">{{ loss_rate }}%</div>
+    <div class="pipeline-stat-label">Loss Rate</div>
+  </div>
+  <div class="pipeline-stat">
+    <div class="pipeline-stat-value">{{ conversion_rate }}%</div>
+    <div class="pipeline-stat-label">Conversion</div>
+  </div>
+</div>
+
+<!-- Kanban Board -->
+<div class="kanban-board" id="kanbanBoard">
+  {% for stage in stages %}
+  <div class="kanban-column" data-stage="{{ stage }}">
+    <div class="kanban-col-head">
+      <span class="kanban-col-title">{{ stage }}</span>
+      <span class="kanban-col-count">{{ stage_data|get_item:stage|length }}</span>
+    </div>
+    <div class="kanban-col-body" id="kanbanCol{{ forloop.counter }}">
+      {% for deal in stage_data|get_item:stage %}
+      <div class="kanban-card" draggable="true" data-deal-id="{{ deal.pk }}">
+        <div class="kanban-card-top">
+          <span class="kanban-card-title">{{ deal.deal_name }}</span>
+          <span class="kanban-card-priority kanban-card-priority--{{ deal.priority|lower }}">{{ deal.priority }}</span>
+        </div>
+        {% if deal.company %}
+        <div class="kanban-card-company">{{ deal.company }}</div>
+        {% endif %}
+        <div class="kanban-card-body">
+          {% if deal.value %}<div class="kanban-card-value">{{ deal.currency }} {{ deal.value|floatformat:0 }}</div>{% endif %}
+          <div class="kanban-card-prob">
+            <div class="kanban-prob-bar">
+              <div class="kanban-prob-fill" style="width:{{ deal.probability }}%"></div>
+            </div>
+            <span>{{ deal.probability }}%</span>
+          </div>
+        </div>
+        {% if deal.expected_close_date %}
+        <div class="kanban-card-footer">
+          <i class="fas fa-calendar-alt"></i> {{ deal.expected_close_date|date:'M d' }}
+        </div>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div class="kanban-empty">No deals</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'deals/js/deals.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var dragSrcEl = null;
+
+  function handleDragStart(e) {
+    dragSrcEl = this;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.outerHTML);
+    this.classList.add('kanban-dragging');
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    this.closest('.kanban-col-body').classList.add('kanban-col-hover');
+  }
+
+  function handleDragLeave(e) {
+    this.closest('.kanban-col-body').classList.remove('kanban-col-hover');
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    var colBody = this.closest('.kanban-col-body');
+    colBody.classList.remove('kanban-col-hover');
+    if (dragSrcEl) {
+      var stage = colBody.closest('.kanban-column').getAttribute('data-stage');
+      var dealId = dragSrcEl.getAttribute('data-deal-id');
+      if (dealId && stage) {
+        var formData = new FormData();
+        formData.append('deal_id', dealId);
+        formData.append('stage', stage);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+        fetch('{% url "deals:kanban_update" %}', {
+          method: 'POST',
+          body: formData,
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.success) {
+            colBody.appendChild(dragSrcEl);
+            dragSrcEl.classList.remove('kanban-dragging');
+            updateColumnCounts();
+          }
+        })
+        .catch(function() {
+          dragSrcEl.classList.remove('kanban-dragging');
+        });
+      }
+    }
+  }
+
+  function handleDragEnd(e) {
+    this.classList.remove('kanban-dragging');
+    document.querySelectorAll('.kanban-col-body').forEach(function(c) {
+      c.classList.remove('kanban-col-hover');
+    });
+  }
+
+  function updateColumnCounts() {
+    document.querySelectorAll('.kanban-column').forEach(function(col) {
+      var count = col.querySelectorAll('.kanban-card').length;
+      col.querySelector('.kanban-col-count').textContent = count;
+    });
+  }
+
+  document.querySelectorAll('.kanban-card').forEach(function(card) {
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragend', handleDragEnd);
+  });
+
+  document.querySelectorAll('.kanban-col-body').forEach(function(col) {
+    col.addEventListener('dragover', handleDragOver);
+    col.addEventListener('dragleave', handleDragLeave);
+    col.addEventListener('drop', handleDrop);
+  });
+});
+</script>
+{% endblock %}

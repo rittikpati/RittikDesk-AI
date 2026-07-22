@@ -7,7 +7,7 @@ User = get_user_model()
 
 class ConversationModelTest(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(email='test@example.com', password='testpass123')
+        self.user = User.objects.create_user(email='test@example.com', username='testuser', password='testpass123')
         self.conversation = Conversation.objects.create(user=self.user, title='Test Chat')
 
     def test_conversation_creation(self):
@@ -27,7 +27,7 @@ class ConversationModelTest(TestCase):
         self.assertIn('Hello world', str(msg))
 
     def test_user_conversation_isolation(self):
-        user2 = User.objects.create_user(email='other@example.com', password='testpass123')
+        user2 = User.objects.create_user(email='other@example.com', username='other', password='testpass123')
         conv2 = Conversation.objects.create(user=user2, title='Other Chat')
         self.assertEqual(Conversation.objects.filter(user=self.user).count(), 1)
         self.assertEqual(Conversation.objects.filter(user=user2).count(), 1)

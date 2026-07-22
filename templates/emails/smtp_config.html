@@ -1,0 +1,379 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}SMTP Settings - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'emails/css/emails.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="emails-header">
+  <h2>SMTP Settings</h2>
+  <a href="{% url 'emails:compose' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+    <i class="fas fa-plus me-1"></i>Compose Email
+  </a>
+</div>
+
+<div class="smtp-layout">
+  <div class="smtp-main">
+
+    {% if config %}
+    <div class="dash-card smtp-status-card">
+      <div class="dash-card-head">
+        <span class="dash-card-title">Connection Status</span>
+      </div>
+      <div class="smtp-status-grid">
+        <div class="smtp-status-item">
+          <span class="smtp-status-label">SMTP Status</span>
+          <span class="smtp-status-value {% if config.is_verified %}smtp-status-connected{% else %}smtp-status-disconnected{% endif %}">
+            {% if config.is_verified %}
+            <i class="fas fa-check-circle"></i> Connected
+            {% else %}
+            <i class="fas fa-times-circle"></i> Not Connected
+            {% endif %}
+          </span>
+        </div>
+        <div class="smtp-status-item">
+          <span class="smtp-status-label">Configured Email</span>
+          <span class="smtp-status-value">{{ config.username }}</span>
+        </div>
+        <div class="smtp-status-item">
+          <span class="smtp-status-label">Configured Sender Name</span>
+          <span class="smtp-status-value">{{ config.sender_name|default:config.username }}</span>
+        </div>
+        <div class="smtp-status-item">
+          <span class="smtp-status-label">Last Tested</span>
+          <span class="smtp-status-value">
+            {% if config.last_tested %}
+            {{ config.last_tested|date:"M j, Y, g:i A" }}
+            {% else %}
+            Never
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="dash-card">
+      <div class="dash-card-head">
+        <span class="dash-card-title">Email Server Configuration</span>
+      </div>
+      <form method="post" action="{% url 'emails:smtp_save' %}" id="smtpForm" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="dash-alert dash-alert-error">
+          {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label small" style="color:var(--dash-text-sec)">
+              SMTP Host <span style="color:var(--dash-red)">*</span>
+            </label>
+            {{ form.host }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small" style="color:var(--dash-text-sec)">
+              Port <span style="color:var(--dash-red)">*</span>
+            </label>
+            {{ form.port }}
+          </div>
+
+          <div class="col-12">
+            <label class="form-label small" style="color:var(--dash-text-sec)">
+              Encryption <span style="color:var(--dash-red)">*</span>
+            </label>
+            <div class="smtp-encryption-group">
+              {% for radio in form.encryption %}
+              <label class="smtp-encryption-option">
+                {{ radio.tag }}
+                <span class="smtp-encryption-label">{{ radio.choice_label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small" style="color:var(--dash-text-sec)">
+              SMTP Username <span style="color:var(--dash-red)">*</span>
+            </label>
+            {{ form.username }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small" style="color:var(--dash-text-sec)">
+              SMTP Password
+              {% if not config %}<span style="color:var(--dash-red)">*</span>{% endif %}
+            </label>
+            <div class="smtp-password-wrapper">
+              {{ form.password }}
+              <button type="button" class="smtp-password-toggle" id="passwordToggle" tabindex="-1" title="Show/Hide password">
+                <i class="fas fa-eye"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small" style="color:var(--dash-text-sec)">Sender Name</label>
+            {{ form.sender_name }}
+            <small style="color:var(--dash-text-ter);font-size:0.7rem">Display name recipients will see</small>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small" style="color:var(--dash-text-sec)">Sender Email</label>
+            {{ form.sender_email }}
+            <small style="color:var(--dash-text-ter);font-size:0.7rem">If blank, SMTP username is used</small>
+          </div>
+        </div>
+
+        <div class="smtp-actions">
+          <button type="submit" class="btn btn-primary rounded-pill px-4 glow-btn" id="saveConfigBtn">
+            <i class="fas fa-save me-1"></i>Save Configuration
+          </button>
+          <button type="button" class="btn btn-outline-light rounded-pill px-3" id="testConnectionBtn">
+            <i class="fas fa-plug me-1"></i>Test Connection
+          </button>
+          {% if config %}
+          <button type="button" class="btn btn-outline-danger rounded-pill px-3" id="resetConfigBtn">
+            <i class="fas fa-undo me-1"></i>Reset
+          </button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="smtp-sidebar">
+    <div class="dash-card">
+      <div class="dash-card-head">
+        <span class="dash-card-title">
+          <i class="fas fa-cog"></i> Quick Setup &mdash; Gmail
+        </span>
+      </div>
+      <div class="smtp-guide-content">
+        <table class="smtp-guide-table">
+          <tr>
+            <td class="smtp-guide-label">SMTP Host</td>
+            <td class="smtp-guide-value"><code>smtp.gmail.com</code></td>
+          </tr>
+          <tr>
+            <td class="smtp-guide-label">Port</td>
+            <td class="smtp-guide-value"><code>587</code></td>
+          </tr>
+          <tr>
+            <td class="smtp-guide-label">Encryption</td>
+            <td class="smtp-guide-value"><code>TLS</code></td>
+          </tr>
+        </table>
+        <button type="button" class="btn btn-sm btn-outline-light rounded-pill mt-2" id="fillGmailBtn">
+          <i class="fas fa-magic me-1"></i>Apply Gmail Settings
+        </button>
+      </div>
+    </div>
+
+    <div class="dash-card">
+      <div class="dash-card-head">
+        <span class="dash-card-title">
+          <i class="fas fa-shield-alt"></i> Google App Passwords
+        </span>
+      </div>
+      <div class="smtp-guide-content">
+        <p class="smtp-info-text">
+          Google requires an <strong>App Password</strong> instead of your normal Gmail password.
+        </p>
+        <div class="smtp-steps">
+          <div class="smtp-step">
+            <span class="smtp-step-num">1</span>
+            <span>Enable <a href="https://myaccount.google.com/security" target="_blank" rel="noopener">Google 2-Step Verification</a> on your Google Account.</span>
+          </div>
+          <div class="smtp-step">
+            <span class="smtp-step-num">2</span>
+            <span>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Google App Passwords</a> and generate a new App Password.</span>
+          </div>
+          <div class="smtp-step">
+            <span class="smtp-step-num">3</span>
+            <span>Copy the 16-character App Password and paste it into the <strong>SMTP Password</strong> field above.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if debug %}
+    <div class="dash-card">
+      <div class="dash-card-head">
+        <span class="dash-card-title">
+          <i class="fas fa-stethoscope"></i> Diagnostics
+          <span style="font-size:0.6rem;background:var(--dash-brand);color:#fff;border-radius:4px;padding:0.1rem 0.4rem;margin-left:0.4rem;vertical-align:middle">DEBUG</span>
+        </span>
+      </div>
+      <div class="smtp-guide-content">
+        <p style="font-size:0.78rem;color:var(--dash-text-sec);margin:0 0 0.5rem">
+          Run a detailed step-by-step SMTP diagnostic. Results are shown below.
+        </p>
+        <button type="button" class="btn btn-sm btn-outline-light rounded-pill" id="diagnosticBtn">
+          <i class="fas fa-stethoscope me-1"></i>Run SMTP Diagnostic
+        </button>
+        <div id="diagnosticOutput"></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function() {
+  var passwordInput = document.getElementById('smtp_password');
+  var toggleBtn = document.getElementById('passwordToggle');
+
+  if (passwordInput && toggleBtn) {
+    toggleBtn.addEventListener('click', function() {
+      var type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      passwordInput.setAttribute('type', type);
+      toggleBtn.innerHTML = type === 'password'
+        ? '<i class="fas fa-eye"></i>'
+        : '<i class="fas fa-eye-slash"></i>';
+    });
+  }
+
+  var fillBtn = document.getElementById('fillGmailBtn');
+  if (fillBtn) {
+    fillBtn.addEventListener('click', function() {
+      var host = document.getElementById('smtp_host');
+      var port = document.getElementById('smtp_port');
+      if (host) host.value = 'smtp.gmail.com';
+      if (port) port.value = '587';
+      var radios = document.querySelectorAll('input[name="encryption"]');
+      for (var i = 0; i < radios.length; i++) {
+        if (radios[i].value === 'tls') {
+          radios[i].checked = true;
+          break;
+        }
+      }
+      showAlert('success', 'Gmail SMTP settings applied. Enter your credentials below.');
+    });
+  }
+
+  var testBtn = document.getElementById('testConnectionBtn');
+  if (testBtn) {
+    testBtn.addEventListener('click', function() {
+      var btn = this;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing...';
+      fetch('{% url "emails:smtp_test" %}', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': '{{ csrf_token }}',
+          'Content-Type': 'application/json',
+        },
+      })
+      .then(function(r) {
+        if (!r.ok) {
+          return r.text().then(function(body) {
+            throw new Error('HTTP ' + r.status + ': ' + body.substring(0, 300));
+          });
+        }
+        return r.json();
+      })
+      .then(function(data) {
+        if (data.success) {
+          showAlert('success', '\u2705 SMTP connection successful.');
+          setTimeout(function() { window.location.reload(); }, 1500);
+        } else {
+          showAlert('error', data.message);
+        }
+      })
+      .catch(function(err) {
+        showAlert('error', 'Test failed: ' + err.message);
+      })
+      .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-plug me-1"></i>Test Connection';
+      });
+    });
+  }
+
+  var diagBtn = document.getElementById('diagnosticBtn');
+  if (diagBtn) {
+    diagBtn.addEventListener('click', function() {
+      var btn = this;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running diagnostics...';
+      var output = document.getElementById('diagnosticOutput');
+      if (output) output.innerHTML = '';
+      fetch('{% url "emails:smtp_diagnostic" %}')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var html = '';
+        if (data.error) {
+          html = '<div class="dash-alert dash-alert-error"><span>' + data.error + '</span></div>';
+        } else if (data.steps && data.steps.length) {
+          html = '<div style="font-family:monospace;font-size:0.78rem;line-height:1.7;background:var(--dash-card-bg);border:1px solid var(--dash-card-border);border-radius:6px;padding:0.75rem 1rem;margin-top:0.75rem">';
+          for (var i = 0; i < data.steps.length; i++) {
+            var s = data.steps[i];
+            var icon = s.status === 'ok' ? '\u2705' : s.status === 'fail' ? '\u274C' : '\u23F3';
+            var color = s.status === 'ok' ? 'var(--dash-green)' : s.status === 'fail' ? 'var(--dash-red)' : 'var(--dash-text-ter)';
+            html += '<div style="color:' + color + '">' + icon + ' <strong>' + s.step + '</strong>';
+            if (s.detail) html += '<br><span style="color:var(--dash-text-sec);margin-left:1.4rem">' + escapeHtml(s.detail) + '</span>';
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+        if (output) output.innerHTML = html;
+      })
+      .catch(function(err) {
+        if (output) output.innerHTML = '<div class="dash-alert dash-alert-error"><span>Diagnostic failed: ' + err.message + '</span></div>';
+      })
+      .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-stethoscope me-1"></i>Run SMTP Diagnostic';
+      });
+    });
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
+  var resetBtn = document.getElementById('resetConfigBtn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function() {
+      if (confirm('Are you sure you want to reset SMTP configuration?')) {
+        var btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Resetting...';
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "emails:smtp_reset" %}';
+        var csrf = document.createElement('input');
+        csrf.type = 'hidden';
+        csrf.name = 'csrfmiddlewaretoken';
+        csrf.value = '{{ csrf_token }}';
+        form.appendChild(csrf);
+        document.body.appendChild(form);
+        form.submit();
+      }
+    });
+  }
+
+  function showAlert(type, msg) {
+    var container = document.querySelector('.dash-content');
+    if (!container) return;
+    var div = document.createElement('div');
+    div.className = 'dash-alert dash-alert-' + type;
+    div.innerHTML = '<span>' + msg + '</span><button class="dash-alert-close" type="button" onclick="this.parentElement.remove()">&times;</button>';
+    container.insertBefore(div, container.firstChild);
+    setTimeout(function() { if (div.parentElement) div.remove(); }, 8000);
+  }
+})();
+</script>
+{% endblock %}

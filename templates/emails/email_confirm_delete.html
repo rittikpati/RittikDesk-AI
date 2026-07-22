@@ -1,0 +1,26 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Delete Email - RittikDesk AI{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="emails-header">
+  <h2>Delete Email</h2>
+</div>
+
+<div class="dash-card" style="max-width:520px">
+  <p style="color:var(--dash-text-sec)">Are you sure you want to delete this email?</p>
+  <p style="font-weight:600;margin:0.5rem 0">{{ email.subject }}</p>
+  <p style="font-size:0.8rem;color:var(--dash-text-ter)">To: {{ email.to_emails|truncatechars:60 }}</p>
+
+  <form method="post" class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-card-border)">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger rounded-pill px-4">
+      <i class="fas fa-trash me-1"></i>Delete
+    </button>
+    <a href="{% if email.is_draft %}{% url 'emails:drafts' %}{% else %}{% url 'emails:sent' %}{% endif %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+  </form>
+</div>
+
+{% endblock %}

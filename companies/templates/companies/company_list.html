@@ -1,0 +1,143 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% block title %}Companies{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'companies/css/companies.css' %}">{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+  <div class="dash-header">
+    <div>
+      <h1 class="dash-title">Companies</h1>
+      <p class="dash-subtitle">Manage your business accounts</p>
+    </div>
+    <div class="dash-header-actions">
+      <a href="{% url 'companies:import' %}" class="dash-btn dash-btn--secondary">
+        <i class="fas fa-upload"></i> Import
+      </a>
+      <a href="{% url 'companies:create' %}" class="dash-btn dash-btn--primary">
+        <i class="fas fa-plus"></i> New Company
+      </a>
+    </div>
+  </div>
+
+  {% include 'dashboard/components/messages.html' %}
+
+  <div class="company-toolbar">
+    <div class="company-search-group">
+      <i class="fas fa-search company-search-icon"></i>
+      <input type="text" id="companySearch" class="company-input" placeholder="Search companies..." value="{{ search }}" autocomplete="off">
+    </div>
+    <div class="company-filter-group">
+      <select id="filterIndustry" class="company-input company-filter">
+        <option value="">All Industries</option>
+        {% for ind in industries %}<option value="{{ ind }}" {% if current_industry == ind %}selected{% endif %}>{{ ind }}</option>{% endfor %}
+      </select>
+      <select id="filterStatus" class="company-input company-filter">
+        <option value="">All Statuses</option>
+        {% for st in statuses %}<option value="{{ st }}" {% if current_status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
+      </select>
+      <select id="filterCountry" class="company-input company-filter">
+        <option value="">All Countries</option>
+        {% for c in countries %}<option value="{{ c }}" {% if current_country == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+      <select id="sortCompanies" class="company-input company-filter">
+        <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Newest</option>
+        <option value="oldest" {% if current_sort == 'oldest' %}selected{% endif %}>Oldest</option>
+        <option value="name_asc" {% if current_sort == 'name_asc' %}selected{% endif %}>Name A–Z</option>
+        <option value="name_desc" {% if current_sort == 'name_desc' %}selected{% endif %}>Name Z–A</option>
+        <option value="employees_desc" {% if current_sort == 'employees_desc' %}selected{% endif %}>Employees ↓</option>
+        <option value="employees_asc" {% if current_sort == 'employees_asc' %}selected{% endif %}>Employees ↑</option>
+        <option value="revenue_desc" {% if current_sort == 'revenue_desc' %}selected{% endif %}>Revenue ↓</option>
+        <option value="revenue_asc" {% if current_sort == 'revenue_asc' %}selected{% endif %}>Revenue ↑</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="company-bulk-bar" id="bulkBar" style="display:none">
+    <span id="selectedCount">0 selected</span>
+    <div class="company-bulk-actions">
+      <select id="bulkStatus" class="company-input" style="width:auto;display:inline-block">
+        <option value="">Change status…</option>
+        {% for st in statuses %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
+      </select>
+      <button class="dash-btn dash-btn--sm dash-btn--primary" id="bulkUpdateBtn"><i class="fas fa-check"></i> Update</button>
+      <button class="dash-btn dash-btn--sm dash-btn--danger" id="bulkDeleteBtn"><i class="fas fa-trash"></i> Delete</button>
+      <button class="dash-btn dash-btn--sm dash-btn--secondary" id="bulkExportBtn"><i class="fas fa-download"></i> Export</button>
+      <button class="dash-btn dash-btn--sm dash-btn--ghost" id="bulkClearBtn">Clear</button>
+    </div>
+  </div>
+
+  <div class="company-table-container">
+    {% if page_obj %}
+    <table class="company-table">
+      <thead>
+        <tr>
+          <th class="company-checkbox"><input type="checkbox" id="selectAll"></th>
+          <th>Company</th>
+          <th>Industry</th>
+          <th>Location</th>
+          <th>Employees</th>
+          <th>Revenue</th>
+          <th>Status</th>
+          <th class="company-actions-th">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="companyTableBody">
+        {% for company in companies %}
+        <tr data-id="{{ company.pk }}">
+          <td class="company-checkbox"><input type="checkbox" name="company_id" value="{{ company.pk }}"></td>
+          <td>
+            <div class="company-cell-name">
+              <span class="company-avatar">{{ company.name|slice:":2"|upper }}</span>
+              <div>
+                <div class="company-name"><a href="{% url 'companies:detail' company.pk %}">{{ company.name }}</a></div>
+                {% if company.email %}<div class="company-meta">{{ company.email }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td><span class="company-badge company-badge--industry">{{ company.industry|default:'—' }}</span></td>
+          <td>{% if company.city %}{{ company.city }}{% if company.country %}, {{ company.country }}{% endif %}{% else %}—{% endif %}</td>
+          <td>{{ company.employees|default:'—' }}</td>
+          <td>{% if company.annual_revenue %}${{ company.annual_revenue|floatformat:0 }}{% else %}—{% endif %}</td>
+          <td><span class="company-badge company-badge--{{ company.status|lower }}">{{ company.status }}</span></td>
+          <td>
+            <a href="{% url 'companies:detail' company.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            <a href="{% url 'companies:update' company.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'companies:delete' company.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="company-pagination">
+      <span class="pagination-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)</span>
+      <div class="pagination-links">
+        {% if page_obj.has_previous %}
+        <a href="?page=1{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&laquo;&laquo;</a>
+        <a href="?page={{ page_obj.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&laquo;</a>
+        {% endif %}
+        <span class="pagination-current">{{ page_obj.number }}</span>
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&raquo;</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&raquo;&raquo;</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="company-empty">
+      <div class="company-empty-icon"><i class="fas fa-building"></i></div>
+      <h3>No companies yet</h3>
+      <p>Start building your CRM by adding your first company.</p>
+      <a href="{% url 'companies:create' %}" class="dash-btn dash-btn--primary"><i class="fas fa-plus"></i> Add Company</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'companies/js/companies.js' %}"></script>
+{% endblock %}

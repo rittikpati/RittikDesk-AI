@@ -19,6 +19,12 @@ class Event(models.Model):
         on_delete=models.CASCADE,
         related_name='events',
     )
+    organization = models.ForeignKey(
+        'companies.Company',
+        on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='events',
+    )
     contact = models.ForeignKey(
         'contacts.Contact',
         on_delete=models.SET_NULL,

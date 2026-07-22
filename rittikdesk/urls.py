@@ -19,8 +19,11 @@ urlpatterns = [
     path('assistant/', include('assistant.urls')),
     path('analytics/', include('analytics.urls')),
     path('tasks/', include('tasks.urls')),
+    path('deals/', include('deals.urls')),
+    path('companies/', include('companies.urls')),
     path('calendar/', include('calendars.urls')),
     path('workflows/', include('workflows.urls')),
+    path('emails/', include('emails.urls')),
     path('api/', include('accounts.api_urls')),
 ]
 

@@ -5,6 +5,10 @@ from leads.models import Lead
 from campaigns.models import Campaign
 from tasks.models import Task
 from calendars.models import Event
+from deals.models import Deal
+from companies.models import Company
+from emails.models import EmailMessage
+from django.db.models import Sum, Count
 from django.utils import timezone
 from datetime import timedelta
 from .services import DashboardIntelligenceService
@@ -71,6 +75,27 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         context['today_events'] = today_events
         context['upcoming_events'] = upcoming_events
         context['today'] = today
+
+        deal_qs = Deal.objects.filter(owner=user)
+        context['total_deals'] = deal_qs.count()
+        context['won_deals'] = deal_qs.filter(stage='Won').count()
+        context['lost_deals'] = deal_qs.filter(stage='Lost').count()
+        context['open_deals'] = deal_qs.exclude(stage__in=['Won', 'Lost']).count()
+        context['deal_revenue'] = deal_qs.filter(stage='Won').aggregate(Sum('value'))['value__sum'] or 0
+        context['deal_potential'] = deal_qs.exclude(stage__in=['Won', 'Lost']).aggregate(Sum('value'))['value__sum'] or 0
+
+        company_qs = Company.objects.filter(owner=user)
+        context['total_companies'] = company_qs.count()
+        context['active_companies'] = company_qs.filter(status='Active').count()
+        context['inactive_companies'] = company_qs.filter(status='Inactive').count()
+        context['top_industries'] = company_qs.exclude(industry='').values('industry').annotate(count=Count('id')).order_by('-count')[:5]
+
+        # ── Email Stats ──────────────────────────────────────────
+        email_qs = EmailMessage.objects.filter(owner=user)
+        context['total_emails'] = email_qs.count()
+        context['sent_emails'] = email_qs.filter(status='sent').count()
+        context['draft_emails'] = email_qs.filter(status='draft', is_draft=True).count()
+        context['failed_emails'] = email_qs.filter(status='failed').count()
 
         # ── AI Dashboard Intelligence ──────────────────────────────
         svc = DashboardIntelligenceService(user)

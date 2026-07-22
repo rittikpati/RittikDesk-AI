@@ -1,0 +1,127 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'deals/css/deals.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="deals-header">
+  <h2>{{ title }}</h2>
+  <a href="{% url 'deals:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Deals</a>
+</div>
+
+<div class="dash-card" style="max-width:820px">
+  <form method="post" class="deal-form" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="dash-alert dash-alert-error">
+      {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Deal Name <span style="color:var(--dash-red)">*</span></label>
+        {{ form.deal_name }}
+        {% if form.deal_name.errors %}<div class="invalid-feedback">{{ form.deal_name.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Company</label>
+        {{ form.company }}
+        {% if form.company.errors %}<div class="invalid-feedback">{{ form.company.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Contact</label>
+        {{ form.contact }}
+        {% if form.contact.errors %}<div class="invalid-feedback">{{ form.contact.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Lead</label>
+        {{ form.lead }}
+        {% if form.lead.errors %}<div class="invalid-feedback">{{ form.lead.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Deal Owner</label>
+        <input type="text" class="form-control" value="{{ user.get_full_name|default:user.username }}" readonly>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Value</label>
+        {{ form.value }}
+        {% if form.value.errors %}<div class="invalid-feedback">{{ form.value.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Currency</label>
+        {{ form.currency }}
+        {% if form.currency.errors %}<div class="invalid-feedback">{{ form.currency.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Stage <span style="color:var(--dash-red)">*</span></label>
+        {{ form.stage }}
+        {% if form.stage.errors %}<div class="invalid-feedback">{{ form.stage.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Probability (%)</label>
+        {{ form.probability }}
+        {% if form.probability.errors %}<div class="invalid-feedback">{{ form.probability.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Expected Close Date</label>
+        {{ form.expected_close_date }}
+        {% if form.expected_close_date.errors %}<div class="invalid-feedback">{{ form.expected_close_date.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Source</label>
+        {{ form.source }}
+        {% if form.source.errors %}<div class="invalid-feedback">{{ form.source.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Priority</label>
+        {{ form.priority }}
+        {% if form.priority.errors %}<div class="invalid-feedback">{{ form.priority.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Description</label>
+        {{ form.description }}
+        {% if form.description.errors %}<div class="invalid-feedback">{{ form.description.errors.0 }}</div>{% endif %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Notes</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}<div class="invalid-feedback">{{ form.notes.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-border)">
+      <button type="submit" class="btn btn-primary rounded-pill px-4 glow-btn">
+        <i class="fas fa-check me-1"></i>{% if is_update %}Update{% else %}Create{% endif %} Deal
+      </button>
+      <a href="{% url 'deals:list' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'deals/js/deals.js' %}"></script>
+{% endblock %}

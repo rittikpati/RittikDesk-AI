@@ -25,8 +25,12 @@ class DashboardIntelligenceService:
         from calendars.models import Event
         from campaigns.models import Campaign
         from workflows.models import Workflow, Notification
+        from deals.models import Deal
+        from companies.models import Company
+        from emails.models import EmailMessage
 
         user = self.user
+        deal_qs = Deal.objects.filter(owner=user)
         return {
             'ai_total_contacts': Contact.objects.filter(owner=user).count(),
             'ai_total_leads': Lead.objects.filter(owner=user).count(),
@@ -58,7 +62,14 @@ class DashboardIntelligenceService:
             'ai_unread_notifications': Notification.objects.filter(
                 owner=user, is_read=False
             ).count(),
-            'ai_total_emails_sent': 0,
+            'ai_total_emails_sent': EmailMessage.objects.filter(
+                owner=user, status='sent'
+            ).count(),
+            'ai_total_deals': deal_qs.count(),
+            'ai_won_deals': deal_qs.filter(stage='Won').count(),
+            'ai_open_deals': deal_qs.exclude(stage__in=['Won', 'Lost']).count(),
+            'ai_total_companies': Company.objects.filter(owner=user).count(),
+            'ai_active_companies': Company.objects.filter(owner=user, status='Active').count(),
         }
 
     # ------------------------------------------------------------------
@@ -71,9 +82,34 @@ class DashboardIntelligenceService:
         from tasks.models import Task
         from calendars.models import Event
         from workflows.models import WorkflowExecutionLog, Notification
+        from deals.models import Deal
+        from companies.models import Company
+        from emails.models import EmailMessage
 
         user = self.user
         activities = []
+
+        for d in Deal.objects.filter(owner=user).order_by('-created_at')[:limit]:
+            activities.append({
+                'type': 'deal',
+                'text': f'Deal <strong>{d.deal_name}</strong> created — {d.stage}',
+                'time': d.created_at,
+                'color': '#8B85FF',
+                'icon': 'fa-handshake',
+                'url_name': 'deals:detail',
+                'url_pk': d.pk,
+            })
+
+        for c in Company.objects.filter(owner=user).order_by('-created_at')[:limit]:
+            activities.append({
+                'type': 'company',
+                'text': f'Company <strong>{c.name}</strong> added — {c.industry}',
+                'time': c.created_at,
+                'color': '#6C63FF',
+                'icon': 'fa-building',
+                'url_name': 'companies:detail',
+                'url_pk': c.pk,
+            })
 
         for c in Contact.objects.filter(owner=user).order_by('-created_at')[:limit]:
             activities.append({
@@ -154,6 +190,19 @@ class DashboardIntelligenceService:
                 'icon': 'fa-bell',
                 'url_name': 'workflows:notifications',
                 'url_pk': None,
+            })
+
+        for e in EmailMessage.objects.filter(owner=user).order_by('-created_at')[:limit]:
+            subj = (e.subject[:50] + '...') if len(e.subject) > 50 else e.subject
+            to_emails_short = (e.to_emails[:30] + '...') if len(e.to_emails) > 30 else e.to_emails
+            activities.append({
+                'type': 'email',
+                'text': f'Email <strong>{subj}</strong> {e.get_status_display().lower()} to {to_emails_short}',
+                'time': e.sent_at or e.created_at,
+                'color': '#8B85FF',
+                'icon': 'fa-envelope',
+                'url_name': 'emails:detail',
+                'url_pk': e.pk,
             })
 
         activities.sort(key=lambda x: x['time'], reverse=True)

@@ -1,0 +1,370 @@
+/* ───── Email System Styles ───── */
+
+.emails-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.emails-header h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.emails-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ───── Status badges ───── */
+.email-status {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.email-status--draft { background: rgba(136,136,170,0.15); color: #8888AA; }
+.email-status--queued { background: rgba(54,153,255,0.15); color: #3699FF; }
+.email-status--sending { background: rgba(255,184,0,0.15); color: #FFB800; }
+.email-status--sent { background: rgba(0,217,166,0.15); color: #00D9A6; }
+.email-status--delivered { background: rgba(108,99,255,0.15); color: #8B85FF; }
+.email-status--failed { background: rgba(255,107,107,0.15); color: #FF6B6B; }
+.email-status--cancelled { background: rgba(136,136,170,0.10); color: #666680; }
+.email-status--scheduled { background: rgba(54,153,255,0.15); color: #3699FF; }
+
+/* ───── Email subject ───── */
+.email-subject {
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.email-priority-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: rgba(255,107,107,0.2);
+  color: #FF6B6B;
+  margin-left: 0.4rem;
+}
+
+/* ───── Row highlight for failed ───── */
+.email-failed {
+  background: rgba(255,107,107,0.03);
+}
+
+/* ───── Email detail ───── */
+.email-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.email-detail-field {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.email-detail-label {
+  font-weight: 600;
+  color: var(--dash-text-sec);
+  min-width: 70px;
+}
+
+.email-detail-body {
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+/* ───── Attachment badge ───── */
+.email-attachment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  background: var(--dash-card-bg);
+  border: 1px solid var(--dash-card-border);
+  color: var(--dash-text-sec);
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+.email-attachment-badge:hover {
+  border-color: var(--dash-brand);
+  color: var(--dash-text);
+}
+
+/* ───── Pagination ───── */
+.emails-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 1rem 0 0.5rem;
+}
+.emails-pagination a,
+.emails-pagination span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 0.4rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  text-decoration: none;
+  color: var(--dash-text-sec);
+  background: transparent;
+  transition: all 0.2s;
+}
+.emails-pagination a:hover {
+  background: var(--dash-card-hover);
+  color: var(--dash-text);
+}
+.emails-pagination .current {
+  background: var(--dash-brand);
+  color: #fff;
+  font-weight: 600;
+}
+.emails-pagination .disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.pagination-info {
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--dash-text-ter);
+  padding-bottom: 0.25rem;
+}
+
+/* ───── SMTP Configuration Page ───── */
+
+.smtp-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .smtp-layout {
+    grid-template-columns: 1fr;
+  }
+  .smtp-sidebar {
+    order: -1;
+  }
+}
+
+/* Status card */
+.smtp-status-card {
+  margin-bottom: 1.25rem;
+}
+.smtp-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 500px) {
+  .smtp-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.smtp-status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.smtp-status-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dash-text-ter);
+}
+.smtp-status-value {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.smtp-status-connected {
+  color: var(--dash-green, #00D9A6);
+}
+.smtp-status-connected i {
+  margin-right: 0.3rem;
+}
+.smtp-status-disconnected {
+  color: var(--dash-red, #FF6B6B);
+}
+.smtp-status-disconnected i {
+  margin-right: 0.3rem;
+}
+
+/* Encryption radio group */
+.smtp-encryption-group {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+.smtp-encryption-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--dash-card-border);
+  background: var(--dash-card-bg);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.smtp-encryption-option:hover {
+  border-color: var(--dash-brand);
+}
+.smtp-encryption-option input[type="radio"] {
+  accent-color: var(--dash-brand);
+  margin: 0;
+}
+.smtp-encryption-option:has(input:checked) {
+  border-color: var(--dash-brand);
+  background: rgba(108, 99, 255, 0.06);
+}
+.smtp-encryption-label {
+  font-weight: 500;
+}
+
+/* Password wrapper with toggle */
+.smtp-password-wrapper {
+  position: relative;
+}
+.smtp-password-wrapper input {
+  padding-right: 2.5rem;
+}
+.smtp-password-toggle {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--dash-text-ter);
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.smtp-password-toggle:hover {
+  color: var(--dash-text);
+}
+
+/* Action buttons */
+.smtp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--dash-card-border);
+}
+
+/* Sidebar guide */
+.smtp-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.smtp-guide-content {
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+.smtp-guide-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.smtp-guide-table td {
+  padding: 0.4rem 0;
+  font-size: 0.82rem;
+}
+.smtp-guide-label {
+  color: var(--dash-text-ter);
+  width: 40%;
+}
+.smtp-guide-value code {
+  background: rgba(108, 99, 255, 0.08);
+  color: var(--dash-brand);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
+/* Info text & steps */
+.smtp-info-text {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin: 0 0 0.75rem;
+  color: var(--dash-text-sec);
+}
+.smtp-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.smtp-step {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--dash-text-sec);
+}
+.smtp-step a {
+  color: var(--dash-brand);
+  text-decoration: none;
+}
+.smtp-step a:hover {
+  text-decoration: underline;
+}
+.smtp-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--dash-brand);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ───── Empty state ───── */
+.emails-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+.emails-empty-icon {
+  font-size: 2.5rem;
+  color: var(--dash-text-ter);
+  margin-bottom: 1rem;
+  opacity: 0.4;
+}
+.emails-empty h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  color: var(--dash-text);
+}
+.emails-empty p {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--dash-text-ter);
+}

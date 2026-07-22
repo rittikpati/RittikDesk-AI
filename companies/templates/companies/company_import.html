@@ -1,0 +1,43 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% block title %}Import Companies{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'companies/css/companies.css' %}">{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+  <div class="dash-header">
+    <div>
+      <h1 class="dash-title">Import Companies</h1>
+      <p class="dash-subtitle">Bulk upload companies from a CSV file</p>
+    </div>
+    <div class="dash-header-actions">
+      <a href="{% url 'companies:list' %}" class="dash-btn dash-btn--secondary"><i class="fas fa-arrow-left"></i> Back</a>
+    </div>
+  </div>
+
+  {% include 'dashboard/components/messages.html' %}
+
+  <div class="company-import-card">
+    <div class="company-import-icon"><i class="fas fa-file-csv"></i></div>
+    <h2>Upload CSV File</h2>
+    <p>Your CSV should include a header row with column names. <strong>Only the "name" column is required.</strong></p>
+
+    <div class="company-import-format">
+      <h4>Supported columns:</h4>
+      <code>name, industry, website, email, phone, city, state, country, postal_code, employees, annual_revenue, description, status</code>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="company-import-form">
+      {% csrf_token %}
+      <div class="company-import-file">
+        {{ form.csv_file }}
+        {% if form.csv_file.errors %}<div class="invalid-feedback">{{ form.csv_file.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="company-form-actions">
+        <a href="{% url 'companies:list' %}" class="dash-btn dash-btn--secondary">Cancel</a>
+        <button type="submit" class="dash-btn dash-btn--primary"><i class="fas fa-upload"></i> Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

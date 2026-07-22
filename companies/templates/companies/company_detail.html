@@ -1,0 +1,263 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% block title %}{{ company.name }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'companies/css/companies.css' %}">{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+  <div class="dash-header">
+    <div>
+      <h1 class="dash-title">{{ company.name }}</h1>
+      <p class="dash-subtitle">{{ company.industry|default:'Company' }}</p>
+    </div>
+    <div class="dash-header-actions">
+      <a href="{% url 'companies:list' %}" class="dash-btn dash-btn--secondary"><i class="fas fa-arrow-left"></i> All Companies</a>
+      <a href="{% url 'companies:update' company.pk %}" class="dash-btn dash-btn--primary"><i class="fas fa-edit"></i> Edit</a>
+      <a href="{% url 'companies:delete' company.pk %}" class="dash-btn dash-btn--danger"><i class="fas fa-trash"></i> Delete</a>
+    </div>
+  </div>
+
+  {% include 'dashboard/components/messages.html' %}
+
+  <div class="company-profile">
+    <div class="company-profile-main">
+      <div class="company-profile-header">
+        <div class="company-profile-avatar">{{ company.name|slice:":2"|upper }}</div>
+        <div class="company-profile-info">
+          <h2>{{ company.name }}</h2>
+          <span class="company-badge company-badge--{{ company.status|lower }}">{{ company.status }}</span>
+          {% if company.industry %}<span class="company-badge company-badge--industry">{{ company.industry }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="company-profile-stats">
+        <div class="company-stat-card">
+          <div class="company-stat-value">{{ contacts_count }}</div>
+          <div class="company-stat-label">Contacts</div>
+        </div>
+        <div class="company-stat-card">
+          <div class="company-stat-value">{{ leads_count }}</div>
+          <div class="company-stat-label">Leads</div>
+        </div>
+        <div class="company-stat-card">
+          <div class="company-stat-value">{{ deals_count }}</div>
+          <div class="company-stat-label">Deals</div>
+        </div>
+        <div class="company-stat-card">
+          <div class="company-stat-value">{{ tasks_count }}</div>
+          <div class="company-stat-label">Tasks</div>
+        </div>
+        <div class="company-stat-card">
+          <div class="company-stat-value">{{ events_count }}</div>
+          <div class="company-stat-label">Meetings</div>
+        </div>
+      </div>
+
+      <div class="company-profile-grid">
+        <div class="company-profile-section">
+          <h3><i class="fas fa-info-circle"></i> Company Information</h3>
+          <div class="company-info-table">
+            <div class="company-info-row">
+              <span class="company-info-label">Website</span>
+              <span class="company-info-value">{% if company.website %}<a href="{{ company.website }}" target="_blank">{{ company.website }}</a>{% else %}—{% endif %}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Email</span>
+              <span class="company-info-value">{{ company.email|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Phone</span>
+              <span class="company-info-value">{{ company.phone|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Industry</span>
+              <span class="company-info-value">{{ company.industry|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Employees</span>
+              <span class="company-info-value">{{ company.employees|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Annual Revenue</span>
+              <span class="company-info-value">{% if company.annual_revenue %}${{ company.annual_revenue|floatformat:2 }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Company Size</span>
+              <span class="company-info-value">{{ company.get_company_size_display|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">LinkedIn</span>
+              <span class="company-info-value">{% if company.linkedin_url %}<a href="{{ company.linkedin_url }}" target="_blank">View Profile</a>{% else %}—{% endif %}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="company-profile-section">
+          <h3><i class="fas fa-map-marker-alt"></i> Address</h3>
+          <div class="company-info-table">
+            <div class="company-info-row">
+              <span class="company-info-label">Address</span>
+              <span class="company-info-value">{{ company.address|default:'—'|linebreaksbr }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">City</span>
+              <span class="company-info-value">{{ company.city|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">State</span>
+              <span class="company-info-value">{{ company.state|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Country</span>
+              <span class="company-info-value">{{ company.country|default:'—' }}</span>
+            </div>
+            <div class="company-info-row">
+              <span class="company-info-label">Postal Code</span>
+              <span class="company-info-value">{{ company.postal_code|default:'—' }}</span>
+            </div>
+          </div>
+          {% if company.description %}
+          <h3 style="margin-top:20px"><i class="fas fa-align-left"></i> Description</h3>
+          <p class="company-description">{{ company.description|linebreaksbr }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="company-profile-tabs">
+      <div class="company-tabs">
+        <button class="company-tab active" data-tab="contacts"><i class="fas fa-users"></i> Contacts ({{ contacts_count }})</button>
+        <button class="company-tab" data-tab="leads"><i class="fas fa-tag"></i> Leads ({{ leads_count }})</button>
+        <button class="company-tab" data-tab="deals"><i class="fas fa-handshake"></i> Deals ({{ deals_count }})</button>
+        <button class="company-tab" data-tab="tasks"><i class="fas fa-tasks"></i> Tasks ({{ tasks_count }})</button>
+        <button class="company-tab" data-tab="events"><i class="fas fa-calendar"></i> Meetings ({{ events_count }})</button>
+        <button class="company-tab" data-tab="activity"><i class="fas fa-clock"></i> Activity</button>
+      </div>
+
+      <div class="company-tab-content active" id="tab-contacts">
+        {% if contacts %}
+        <div class="company-related-list">
+          {% for c in contacts %}
+          <div class="company-related-item">
+            <div class="company-related-avatar">{{ c.full_name|slice:":2"|upper }}</div>
+            <div class="company-related-info">
+              <strong>{{ c.full_name }}</strong>
+              {% if c.email %}<span>{{ c.email }}</span>{% endif %}
+            </div>
+            <a href="{% url 'contacts:detail' c.pk %}" class="dash-btn dash-btn--sm dash-btn--ghost"><i class="fas fa-external-link-alt"></i></a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="company-empty-tab">No contacts associated with this company.</p>
+        {% endif %}
+      </div>
+
+      <div class="company-tab-content" id="tab-leads">
+        {% if leads %}
+        <div class="company-related-list">
+          {% for l in leads %}
+          <div class="company-related-item">
+            <div class="company-related-avatar" style="background:#FFB800">{{ l.lead_name|slice:":2"|upper }}</div>
+            <div class="company-related-info">
+              <strong>{{ l.lead_name }}</strong>
+              <span>{{ l.status }} · {{ l.source }}</span>
+            </div>
+            <a href="{% url 'leads:detail' l.pk %}" class="dash-btn dash-btn--sm dash-btn--ghost"><i class="fas fa-external-link-alt"></i></a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="company-empty-tab">No leads associated with this company.</p>
+        {% endif %}
+      </div>
+
+      <div class="company-tab-content" id="tab-deals">
+        {% if deals %}
+        <div class="company-related-list">
+          {% for d in deals %}
+          <div class="company-related-item">
+            <div class="company-related-avatar" style="background:#8B85FF">{{ d.deal_name|slice:":2"|upper }}</div>
+            <div class="company-related-info">
+              <strong>{{ d.deal_name }}</strong>
+              <span>{{ d.stage }} · {% if d.value %}{{ d.currency }} {{ d.value|floatformat:2 }}{% endif %}</span>
+            </div>
+            <a href="{% url 'deals:detail' d.pk %}" class="dash-btn dash-btn--sm dash-btn--ghost"><i class="fas fa-external-link-alt"></i></a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="company-empty-tab">No deals associated with this company.</p>
+        {% endif %}
+      </div>
+
+      <div class="company-tab-content" id="tab-tasks">
+        {% if tasks %}
+        <div class="company-related-list">
+          {% for t in tasks %}
+          <div class="company-related-item">
+            <div class="company-related-avatar" style="background:#00D9A6">{{ t.title|slice:":2"|upper }}</div>
+            <div class="company-related-info">
+              <strong>{{ t.title }}</strong>
+              <span>{{ t.get_status_display }} · {{ t.priority }}</span>
+            </div>
+            <a href="{% url 'tasks:detail' t.pk %}" class="dash-btn dash-btn--sm dash-btn--ghost"><i class="fas fa-external-link-alt"></i></a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="company-empty-tab">No tasks associated with this company.</p>
+        {% endif %}
+      </div>
+
+      <div class="company-tab-content" id="tab-events">
+        {% if events %}
+        <div class="company-related-list">
+          {% for e in events %}
+          <div class="company-related-item">
+            <div class="company-related-avatar" style="background:#00B4D8">{{ e.title|slice:":2"|upper }}</div>
+            <div class="company-related-info">
+              <strong>{{ e.title }}</strong>
+              <span>{{ e.start_date }} · {{ e.get_event_type_display }}</span>
+            </div>
+            <a href="{% url 'calendars:detail' e.pk %}" class="dash-btn dash-btn--sm dash-btn--ghost"><i class="fas fa-external-link-alt"></i></a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="company-empty-tab">No meetings scheduled for this company.</p>
+        {% endif %}
+      </div>
+
+      <div class="company-tab-content" id="tab-activity">
+        {% if recent_activities %}
+        <div class="company-activity-list">
+          {% for act in recent_activities %}
+          <div class="company-activity-item">
+            <div class="company-activity-dot company-activity-dot--{{ act.type }}"></div>
+            <div class="company-activity-text">{{ act.text|safe }}</div>
+            <div class="company-activity-time">{{ act.time|timesince }} ago</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="company-empty-tab">No recent activity for this company.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('.company-tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.company-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.company-tab-content').forEach(c => c.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+  });
+});
+</script>
+{% endblock %}

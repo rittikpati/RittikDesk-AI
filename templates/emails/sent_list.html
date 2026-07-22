@@ -1,0 +1,213 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Sent Emails - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'emails/css/emails.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="emails-header">
+  <h2>Sent Emails</h2>
+  <div class="emails-toolbar">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <div class="search-box">
+        <i class="fas fa-search search-box-icon"></i>
+        <input type="text" id="emailSearch" placeholder="Search emails..." autocomplete="off" value="{{ search_query }}">
+        <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+      </div>
+      <select id="statusFilter">
+        <option value="">All Status</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if active_status == val %}selected{% endif %}>{{ label|title }}</option>
+        {% endfor %}
+      </select>
+      <select id="sortSelect">
+        {% for val, label in sort_choices %}
+        <option value="{{ val }}" {% if sort_by == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <a href="{% url 'emails:compose' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+        <i class="fas fa-plus me-1"></i>Compose
+      </a>
+      <a href="{% url 'emails:drafts' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+        <i class="fas fa-save me-1"></i>Drafts
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="dash-card">
+  {% if emails %}
+  <div class="dash-table-wrap">
+    <table class="dash-table emails-table">
+      <thead>
+        <tr>
+          <th>Subject</th>
+          <th>To</th>
+          <th>Status</th>
+          <th>Sent</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="emailsResults">
+        {% for email in emails %}
+        <tr class="{% if email.status == 'failed' %}email-failed{% endif %}">
+          <td>
+            <div class="dash-td-name">
+              <div>
+                <div class="email-subject">{{ email.subject|truncatechars:60 }}</div>
+                {% if email.priority == 'high' %}<span class="email-priority-badge">High</span>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td style="font-size:0.8rem;color:var(--dash-text-sec)">{{ email.to_emails|truncatechars:40 }}</td>
+          <td>
+            <span class="email-status email-status--{{ email.status }}">{{ email.get_status_display }}</span>
+          </td>
+          <td style="font-size:0.75rem;color:var(--dash-text-ter)">
+            {% if email.sent_at %}{{ email.sent_at|date:'M d, Y H:i' }}{% else %}{{ email.created_at|date:'M d, Y H:i' }}{% endif %}
+          </td>
+          <td>
+            <a href="{% url 'emails:detail' email.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            {% if email.status == 'failed' %}
+            <form method="post" action="{% url 'emails:retry' email.pk %}" style="display:inline">
+              {% csrf_token %}
+              <button type="submit" class="dash-td-btn" title="Retry" style="background:none;border:none;color:var(--dash-brand);cursor:pointer"><i class="fas fa-redo"></i></button>
+            </form>
+            {% endif %}
+            {% if email.status == 'queued' or email.status == 'scheduled' %}
+            <form method="post" action="{% url 'emails:cancel' email.pk %}" style="display:inline">
+              {% csrf_token %}
+              <button type="submit" class="dash-td-btn" title="Cancel" style="background:none;border:none;color:var(--dash-red);cursor:pointer" onclick="return confirm('Cancel this email?')"><i class="fas fa-ban"></i></button>
+            </form>
+            {% endif %}
+            <a href="{% url 'emails:delete' email.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="emails-pagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&sort={{ sort_by }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&sort={{ sort_by }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% else %}
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&sort={{ sort_by }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&sort={{ sort_by }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&status={{ active_status|urlencode }}&sort={{ sort_by }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
+    {% endif %}
+  </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="emails-empty">
+    <div class="emails-empty-icon"><i class="fas fa-envelope-open-text"></i></div>
+    {% if search_query or active_status %}
+    <h4>No emails found</h4>
+    <p>Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+    {% else %}
+    <h4>No sent emails yet</h4>
+    <p>Compose your first email to get started.</p>
+    <a href="{% url 'emails:compose' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Compose Email
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function () {
+  function getParams() {
+    var params = new URLSearchParams(window.location.search);
+    return {
+      search: params.get('search') || '',
+      status: params.get('status') || '',
+      sort: params.get('sort') || 'newest',
+    };
+  }
+
+  function navigate() {
+    var p = getParams();
+    var search = document.getElementById('emailSearch');
+    var status = document.getElementById('statusFilter');
+    var sort = document.getElementById('sortSelect');
+    if (search) p.search = search.value.trim();
+    if (status) p.status = status.value;
+    if (sort) p.sort = sort.value;
+    var qs = new URLSearchParams();
+    if (p.search) qs.set('search', p.search);
+    if (p.status) qs.set('status', p.status);
+    if (p.sort !== 'newest') qs.set('sort', p.sort);
+    var url = '?' + qs.toString();
+    if (url !== window.location.search) window.location.href = url;
+  }
+
+  var searchInput = document.getElementById('emailSearch');
+  var searchClear = document.getElementById('searchClear');
+  var statusFilter = document.getElementById('statusFilter');
+  var sortSelect = document.getElementById('sortSelect');
+  var clearBtn = document.getElementById('clearFiltersBtn');
+
+  function updateSearchUI() {
+    if (searchClear) {
+      searchClear.classList.toggle('is-visible', searchInput.value.length > 0);
+    }
+  }
+
+  if (searchInput) {
+    var timer = null;
+    searchInput.addEventListener('input', function () {
+      updateSearchUI();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(navigate, 400);
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', function () {
+      if (searchInput) searchInput.value = '';
+      updateSearchUI();
+      navigate();
+    });
+  }
+  updateSearchUI();
+  if (statusFilter) statusFilter.addEventListener('change', navigate);
+  if (sortSelect) sortSelect.addEventListener('change', navigate);
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    window.location.href = '?';
+  });
+})();
+</script>
+{% endblock %}

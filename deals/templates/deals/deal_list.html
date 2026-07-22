@@ -1,0 +1,209 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Deals - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'deals/css/deals.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="deals-header">
+  <h2>Deals <span class="deals-count" id="dealCount">({{ total_deals }})</span></h2>
+  <div class="deals-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="dealSearch" placeholder="Search deals..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+      <span class="search-box-spinner" id="searchSpinner"></span>
+    </div>
+    <div class="filter-group">
+      <select id="stageFilter">
+        <option value="">All Stages</option>
+        {% for s in stage_choices %}
+        <option value="{{ s }}" {% if active_stage == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <select id="priorityFilter">
+        <option value="">All Priority</option>
+        {% for p in priority_choices %}
+        <option value="{{ p }}" {% if active_priority == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+      <select id="sourceFilter">
+        <option value="">All Sources</option>
+        {% for src in source_choices %}
+        <option value="{{ src }}" {% if active_source == src %}selected{% endif %}>{{ src }}</option>
+        {% endfor %}
+      </select>
+      <select id="sortSelect">
+        {% for val, label in sort_choices %}
+        <option value="{{ val }}" {% if sort_by == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="deals-actions">
+      <a href="{% url 'deals:kanban' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+        <i class="fas fa-columns me-1"></i>Kanban
+      </a>
+      <a href="{% url 'deals:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn" id="addDealBtn">
+        <i class="fas fa-plus me-1"></i>Add Deal
+      </a>
+    </div>
+  </div>
+</div>
+
+{% csrf_token %}
+
+<div class="dash-card" id="dealsCard">
+  {% if deals %}
+
+  <div class="bulk-bar" id="bulkBar" style="display:none">
+    <div class="bulk-bar-inner">
+      <span class="bulk-count" id="bulkCount">0 selected</span>
+      <select id="bulkStageSelect" class="bulk-select">
+        <option value="">Change Stage</option>
+        {% for s in stage_choices %}
+        <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
+      <select id="bulkPrioritySelect" class="bulk-select">
+        <option value="">Change Priority</option>
+        {% for p in priority_choices %}
+        <option value="{{ p }}">{{ p }}</option>
+        {% endfor %}
+      </select>
+      <button class="bulk-update-btn" id="bulkUpdateBtn"><i class="fas fa-check me-1"></i>Update</button>
+      <button class="bulk-delete-btn" id="bulkDeleteBtn"><i class="fas fa-trash me-1"></i>Delete</button>
+      <button class="bulk-export-btn" id="bulkExportBtn"><i class="fas fa-download me-1"></i>Export CSV</button>
+      <button class="bulk-clear-btn" id="bulkClearBtn" title="Clear selection">&times;</button>
+    </div>
+  </div>
+
+  <div class="dash-table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th class="deal-checkbox"><input type="checkbox" id="selectAll"></th>
+          <th>Deal Name</th>
+          <th>Company</th>
+          <th>Value</th>
+          <th>Stage</th>
+          <th>Probability</th>
+          <th>Priority</th>
+          <th>Close Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="dealsResults">
+        {% for deal in deals %}
+        <tr>
+          <td class="deal-checkbox"><input type="checkbox" name="deal_id" value="{{ deal.pk }}"></td>
+          <td>
+            <div class="dash-td-name">
+              <span class="deal-avatar">{{ deal.deal_name|slice:":2"|upper }}</span>
+              <div>
+                <div class="deal-name">{{ deal.deal_name }}</div>
+                <div class="deal-owner">{{ deal.owner.get_full_name|default:deal.owner.username }}</div>
+              </div>
+            </div>
+          </td>
+          <td>{{ deal.company|default:'—' }}</td>
+          <td>{% if deal.value %}{{ deal.currency }} {{ deal.value|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td><span class="deal-badge deal-badge--{{ deal.stage|slugify }}">{{ deal.stage }}</span></td>
+          <td><span class="deal-prob">{{ deal.probability }}%</span></td>
+          <td><span class="deal-priority deal-priority--{{ deal.priority|lower }}">{{ deal.priority }}</span></td>
+          <td style="font-size:0.75rem;color:var(--dash-text-sec)">
+            {% if deal.expected_close_date %}{{ deal.expected_close_date|date:'M d, Y' }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="{% url 'deals:detail' deal.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
+            <a href="{% url 'deals:update' deal.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'deals:delete' deal.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="deals-pagination" id="dealsPagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&stage={{ active_stage|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&stage={{ active_stage|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% else %}
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&stage={{ active_stage|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&stage={{ active_stage|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&stage={{ active_stage|urlencode }}&priority={{ active_priority|urlencode }}&source={{ active_source|urlencode }}&sort={{ sort_by }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
+    {% endif %}
+  </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="deals-empty">
+    <div class="deals-empty-icon"><i class="fas fa-handshake"></i></div>
+    <h4>No deals yet</h4>
+    <p>Start tracking your sales pipeline by adding your first deal.</p>
+    <a href="{% url 'deals:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Add Your First Deal
+    </a>
+  </div>
+  {% endif %}
+
+  <div class="search-no-results" id="searchNoResults" style="display:none">
+    <div class="search-no-results-icon"><i class="fas fa-search"></i></div>
+    <h4>No deals found</h4>
+    <p id="searchNoResultsMsg">Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+  </div>
+</div>
+
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content" style="background:var(--dash-card-bg);border:1px solid var(--dash-border);border-radius:14px">
+      <div class="modal-body text-center p-4">
+        <div class="bulk-modal-icon"><i class="fas fa-exclamation-triangle"></i></div>
+        <h5 style="font-weight:600;margin-bottom:6px">Delete Deals</h5>
+        <p style="font-size:0.82rem;color:var(--dash-text-sec);margin:0">
+          Are you sure you want to delete <strong id="bulkDeleteCount">0</strong> deal(s)? This cannot be undone.
+        </p>
+      </div>
+      <div class="modal-footer justify-content-center border-0 pt-0 pb-4">
+        <button type="button" class="btn btn-outline-light btn-sm rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn rounded-pill px-3" id="bulkDeleteConfirm" style="background:rgba(255,107,107,0.12);color:var(--dash-red);border:1px solid rgba(255,107,107,0.2)">
+          <i class="fas fa-trash me-1"></i>Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'deals/js/deals.js' %}"></script>
+{% endblock %}

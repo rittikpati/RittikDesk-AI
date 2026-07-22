@@ -25,6 +25,14 @@
                 <i class="fas fa-tag"></i>
                 <span>Leads</span>
             </a>
+            <a href="{% url 'companies:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'companies' %} active{% endif %}">
+                <i class="fas fa-building"></i>
+                <span>Companies</span>
+            </a>
+            <a href="{% url 'deals:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'deals' %} active{% endif %}">
+                <i class="fas fa-handshake"></i>
+                <span>Deals</span>
+            </a>
             <a href="{% url 'campaigns:list' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'campaigns' %} active{% endif %}">
                 <i class="fas fa-bullhorn"></i>
                 <span>Campaigns</span>
@@ -44,6 +52,10 @@
             <a href="{% url 'workflows:notifications' %}" class="dash-nav-item{% if request.resolver_match.url_name == 'notifications' %} active{% endif %}">
                 <i class="fas fa-bell"></i>
                 <span>Notifications</span>
+            </a>
+            <a href="{% url 'emails:sent' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'emails' %} active{% endif %}">
+                <i class="fas fa-envelope"></i>
+                <span>Emails</span>
             </a>
         </div>
 

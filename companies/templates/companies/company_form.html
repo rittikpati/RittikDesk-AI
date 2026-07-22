@@ -1,0 +1,138 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% block title %}{% if form.instance.pk %}Edit{% else %}New{% endif %} Company{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'companies/css/companies.css' %}">{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+  <div class="dash-header">
+    <div>
+      <h1 class="dash-title">{% if form.instance.pk %}Edit Company{% else %}New Company{% endif %}</h1>
+      <p class="dash-subtitle">{% if form.instance.pk %}Update company information{% else %}Add a new company to your CRM{% endif %}</p>
+    </div>
+    <div class="dash-header-actions">
+      <a href="{% url 'companies:list' %}" class="dash-btn dash-btn--secondary"><i class="fas fa-arrow-left"></i> Back</a>
+    </div>
+  </div>
+
+  {% include 'dashboard/components/messages.html' %}
+
+  <div class="company-form-card">
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+      <div class="company-form-errors">
+        {% for err in form.non_field_errors %}<p>{{ err }}</p>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="company-form-section">
+        <h3 class="company-form-section-title"><i class="fas fa-building"></i> Basic Information</h3>
+        <div class="company-form-row">
+          <div class="company-form-group">
+            <label class="company-form-label">Company Name *</label>
+            {{ form.name }}
+            {% if form.name.errors %}<div class="invalid-feedback">{{ form.name.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="company-form-group">
+            <label class="company-form-label">Industry</label>
+            {{ form.industry }}
+          </div>
+        </div>
+        <div class="company-form-row">
+          <div class="company-form-group">
+            <label class="company-form-label">Website</label>
+            {{ form.website }}
+          </div>
+          <div class="company-form-group">
+            <label class="company-form-label">Company Email</label>
+            {{ form.email }}
+          </div>
+        </div>
+        <div class="company-form-row">
+          <div class="company-form-group">
+            <label class="company-form-label">Phone</label>
+            {{ form.phone }}
+          </div>
+          <div class="company-form-group">
+            <label class="company-form-label">LinkedIn URL</label>
+            {{ form.linkedin_url }}
+          </div>
+        </div>
+      </div>
+
+      <div class="company-form-section">
+        <h3 class="company-form-section-title"><i class="fas fa-map-marker-alt"></i> Address</h3>
+        <div class="company-form-row">
+          <div class="company-form-group company-form-group--full">
+            <label class="company-form-label">Address</label>
+            {{ form.address }}
+          </div>
+        </div>
+        <div class="company-form-row">
+          <div class="company-form-group">
+            <label class="company-form-label">City</label>
+            {{ form.city }}
+          </div>
+          <div class="company-form-group">
+            <label class="company-form-label">State / Province</label>
+            {{ form.state }}
+          </div>
+        </div>
+        <div class="company-form-row">
+          <div class="company-form-group">
+            <label class="company-form-label">Country</label>
+            {{ form.country }}
+          </div>
+          <div class="company-form-group">
+            <label class="company-form-label">Postal Code</label>
+            {{ form.postal_code }}
+          </div>
+        </div>
+      </div>
+
+      <div class="company-form-section">
+        <h3 class="company-form-section-title"><i class="fas fa-chart-bar"></i> Business Details</h3>
+        <div class="company-form-row">
+          <div class="company-form-group">
+            <label class="company-form-label">Employees</label>
+            {{ form.employees }}
+          </div>
+          <div class="company-form-group">
+            <label class="company-form-label">Annual Revenue ($)</label>
+            {{ form.annual_revenue }}
+          </div>
+          <div class="company-form-group">
+            <label class="company-form-label">Company Size</label>
+            {{ form.company_size }}
+          </div>
+        </div>
+      </div>
+
+      <div class="company-form-section">
+        <h3 class="company-form-section-title"><i class="fas fa-info-circle"></i> Additional Info</h3>
+        <div class="company-form-row">
+          <div class="company-form-group company-form-group--full">
+            <label class="company-form-label">Description</label>
+            {{ form.description }}
+          </div>
+        </div>
+        <div class="company-form-row">
+          <div class="company-form-group">
+            <label class="company-form-label">Status</label>
+            {{ form.status }}
+          </div>
+        </div>
+      </div>
+
+      <div class="company-form-actions">
+        <a href="{% url 'companies:list' %}" class="dash-btn dash-btn--secondary">Cancel</a>
+        <button type="submit" class="dash-btn dash-btn--primary">
+          <i class="fas fa-save"></i> {% if form.instance.pk %}Update Company{% else %}Create Company{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

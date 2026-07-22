@@ -1,0 +1,64 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ title }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'emails/css/emails.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="emails-header">
+  <h2>{{ title }}</h2>
+  <a href="{% url 'emails:templates' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Templates</a>
+</div>
+
+<div class="dash-card" style="max-width:720px">
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="dash-alert dash-alert-error">
+      {% for err in form.non_field_errors %}<span>{{ err }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Template Name <span style="color:var(--dash-red)">*</span></label>
+        {{ form.name }}
+        {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Subject <span style="color:var(--dash-red)">*</span></label>
+        {{ form.subject }}
+        {% if form.subject.errors %}<div class="invalid-feedback d-block">{{ form.subject.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">HTML Body</label>
+        {{ form.body_html }}
+      </div>
+      <div class="col-12">
+        <label class="form-label small" style="color:var(--dash-text-sec)">Plain Text Body</label>
+        {{ form.body_plain }}
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          {{ form.is_shared }}
+          <label class="form-check-label small" for="{{ form.is_shared.id_for_label }}">Make shared (visible to all users)</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--dash-card-border)">
+      <button type="submit" class="btn btn-primary rounded-pill px-4 glow-btn">
+        <i class="fas fa-check me-1"></i>Save Template
+      </button>
+      <a href="{% url 'emails:templates' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

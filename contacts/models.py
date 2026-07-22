@@ -9,6 +9,12 @@ class Contact(models.Model):
         related_name='contacts',
     )
     full_name = models.CharField(max_length=255)
+    organization = models.ForeignKey(
+        'companies.Company',
+        on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='contacts',
+    )
     company = models.CharField(max_length=255, blank=True)
     job_title = models.CharField(max_length=255, blank=True)
     email = models.EmailField(blank=True)

@@ -1,0 +1,128 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}{{ deal.deal_name }} - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'deals/css/deals.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="deals-header">
+  <h2>Deal Details</h2>
+  <a href="{% url 'deals:list' %}" class="dash-card-link"><i class="fas fa-arrow-left me-1"></i>Back to Deals</a>
+</div>
+
+<div class="dash-grid" style="grid-template-columns: 1fr 1fr; gap:20px">
+  <div class="dash-card">
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <span class="deal-avatar-sm">{{ deal.deal_name|slice:":2"|upper }}</span>
+      <div>
+        <h4 style="margin:0;font-size:1.05rem;font-weight:700">{{ deal.deal_name }}</h4>
+        {% if deal.company %}<span style="color:var(--dash-text-sec);font-size:0.8rem">{{ deal.company }}</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Contact</div>
+      <div class="detail-value">{{ deal.contact.full_name|default:'—' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Lead</div>
+      <div class="detail-value">{{ deal.lead.lead_name|default:'—' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Deal Owner</div>
+      <div class="detail-value">{{ deal.owner.get_full_name|default:deal.owner.username }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Value</div>
+      <div class="detail-value">{% if deal.value %}{{ deal.currency }} {{ deal.value|floatformat:2 }}{% else %}—{% endif %}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Weighted Value</div>
+      <div class="detail-value">
+        {% if weighted_value is not None %}{{ deal.currency }} {{ weighted_value|floatformat:2 }}{% else %}—{% endif %}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Source</div>
+      <div class="detail-value">{{ deal.source|default:'—' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Description</div>
+      <div class="detail-notes-card">{{ deal.description|default:'No description.' }}</div>
+    </div>
+  </div>
+
+  <div class="dash-card">
+    <div class="detail-section">
+      <div class="detail-label">Stage</div>
+      <div><span class="deal-badge deal-badge--{{ deal.stage|slugify }}">{{ deal.stage }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Probability</div>
+      <div class="d-flex align-items-center gap-2">
+        <div style="flex:1;height:6px;background:var(--dash-border);border-radius:3px;overflow:hidden;max-width:120px">
+          <div style="height:100%;width:{{ deal.probability }}%;background:{% if deal.probability >= 80 %}#00D9A6{% elif deal.probability >= 50 %}#FFB800{% else %}#FF6B6B{% endif %};border-radius:3px;transition:width 0.5s"></div>
+        </div>
+        <span>{{ deal.probability }}%</span>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Priority</div>
+      <div><span class="deal-priority deal-priority--{{ deal.priority|lower }}">{{ deal.priority }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Expected Close Date</div>
+      <div class="detail-value">{{ deal.expected_close_date|date:'M d, Y'|default:'—' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Status</div>
+      <div><span class="deal-status deal-status--{{ deal.status|lower }}">{{ deal.status }}</span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Notes</div>
+      <div class="detail-notes-card">{{ deal.notes|default:'No notes recorded.' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Created</div>
+      <div class="detail-value">{{ deal.created_at|date:'M d, Y' }} at {{ deal.created_at|date:'g:i A' }}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">Last Updated</div>
+      <div class="detail-value">{{ deal.updated_at|date:'M d, Y' }} at {{ deal.updated_at|date:'g:i A' }}</div>
+    </div>
+
+    <div class="detail-actions">
+      <a href="{% url 'deals:update' deal.pk %}" class="btn btn-primary rounded-pill px-3 glow-btn btn-sm">
+        <i class="fas fa-edit me-1"></i>Edit
+      </a>
+      <a href="{% url 'deals:delete' deal.pk %}" class="btn rounded-pill px-3 btn-sm" style="background:rgba(255,107,107,0.1);color:var(--dash-red);border:1px solid rgba(255,107,107,0.15)">
+        <i class="fas fa-trash me-1"></i>Delete
+      </a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'deals/js/deals.js' %}"></script>
+{% endblock %}

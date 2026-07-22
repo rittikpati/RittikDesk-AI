@@ -19,6 +19,12 @@ class Task(models.Model):
         on_delete=models.CASCADE,
         related_name='tasks',
     )
+    organization = models.ForeignKey(
+        'companies.Company',
+        on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='tasks',
+    )
     contact = models.ForeignKey(
         'contacts.Contact',
         on_delete=models.SET_NULL,

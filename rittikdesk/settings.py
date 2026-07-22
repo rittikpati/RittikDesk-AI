@@ -46,6 +46,9 @@ INSTALLED_APPS = [
     'calendars',
     'workflows',
     'core',
+    'deals',
+    'companies',
+    'emails',
 ]
 
 MIDDLEWARE = [

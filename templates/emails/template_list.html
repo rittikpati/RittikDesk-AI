@@ -1,0 +1,158 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Email Templates - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'emails/css/emails.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="emails-header">
+  <h2>Email Templates</h2>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="templateSearch" placeholder="Search templates..." autocomplete="off" value="{{ search_query }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+    </div>
+    <a href="{% url 'emails:template_create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn">
+      <i class="fas fa-plus me-1"></i>Create Template
+    </a>
+    <a href="{% url 'emails:compose' %}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+      <i class="fas fa-envelope me-1"></i>Compose
+    </a>
+  </div>
+</div>
+
+<div class="dash-card">
+  {% if templates %}
+  <div class="dash-table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Subject</th>
+          <th>Shared</th>
+          <th>Updated</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tpl in templates %}
+        <tr>
+          <td>
+            <div class="dash-td-name">
+              <div class="email-subject">{{ tpl.name }}</div>
+            </div>
+          </td>
+          <td style="font-size:0.8rem;color:var(--dash-text-sec)">{{ tpl.subject|truncatechars:50 }}</td>
+          <td>
+            {% if tpl.is_shared %}
+            <i class="fas fa-globe" style="color:var(--dash-green)" title="Shared"></i>
+            {% else %}
+            <i class="fas fa-lock" style="color:var(--dash-text-ter)" title="Private"></i>
+            {% endif %}
+          </td>
+          <td style="font-size:0.75rem;color:var(--dash-text-ter)">{{ tpl.updated_at|date:'M d, Y' }}</td>
+          <td>
+            <a href="{% url 'emails:template_update' tpl.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'emails:template_delete' tpl.pk %}" class="dash-td-btn" title="Delete" style="color:var(--dash-red)"><i class="fas fa-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="emails-pagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search_query|urlencode }}&page=1">&laquo;</a>
+    <a href="?search={{ search_query|urlencode }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+    {% endif %}
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}<span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search_query|urlencode }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+    {% if page_obj.has_next %}
+    <a href="?search={{ search_query|urlencode }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search_query|urlencode }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="emails-empty">
+    <div class="emails-empty-icon"><i class="fas fa-file-alt"></i></div>
+    {% if search_query %}
+    <h4>No templates found</h4>
+    <p>Try adjusting your search.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Search
+    </button>
+    {% else %}
+    <h4>No templates yet</h4>
+    <p>Create a template to reuse for future emails.</p>
+    <a href="{% url 'emails:template_create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Create Template
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function () {
+  var searchInput = document.getElementById('templateSearch');
+  var searchClear = document.getElementById('searchClear');
+  var clearBtn = document.getElementById('clearFiltersBtn');
+
+  function navigate() {
+    var params = new URLSearchParams(window.location.search);
+    if (searchInput) {
+      var v = searchInput.value.trim();
+      if (v) params.set('search', v);
+      else params.delete('search');
+    }
+    var qs = params.toString();
+    var url = qs ? '?' + qs : '.';
+    if (url !== window.location.search) window.location.href = url;
+  }
+
+  function updateSearchUI() {
+    if (searchClear) {
+      searchClear.classList.toggle('is-visible', searchInput.value.length > 0);
+    }
+  }
+
+  if (searchInput) {
+    var timer = null;
+    searchInput.addEventListener('input', function () {
+      updateSearchUI();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(navigate, 400);
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', function () {
+      if (searchInput) searchInput.value = '';
+      updateSearchUI();
+      navigate();
+    });
+  }
+  updateSearchUI();
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    window.location.href = '?';
+  });
+})();
+</script>
+{% endblock %}

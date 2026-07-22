@@ -1,0 +1,44 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% block title %}Delete {{ company.name }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'companies/css/companies.css' %}">{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+  <div class="dash-header">
+    <div>
+      <h1 class="dash-title">Delete Company</h1>
+      <p class="dash-subtitle">This action cannot be undone</p>
+    </div>
+    <div class="dash-header-actions">
+      <a href="{% url 'companies:list' %}" class="dash-btn dash-btn--secondary"><i class="fas fa-arrow-left"></i> Back</a>
+    </div>
+  </div>
+
+  {% include 'dashboard/components/messages.html' %}
+
+  <div class="company-delete-card">
+    <div class="company-delete-icon"><i class="fas fa-exclamation-triangle"></i></div>
+    <h2>Are you sure you want to delete "{{ company.name }}"?</h2>
+    <p>This will permanently remove this company and may affect related records.</p>
+
+    <div class="company-delete-info">
+      <p><strong>Company:</strong> {{ company.name }}</p>
+      <p><strong>Industry:</strong> {{ company.industry|default:'—' }}</p>
+      <p><strong>Status:</strong> {{ company.status }}</p>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="company-delete-confirm">
+        <label>Type <strong>"{{ company.name }}"</strong> to confirm:</label>
+        <input type="text" name="confirm_name" class="company-input" placeholder="Type company name to confirm" required>
+      </div>
+      <div class="company-delete-actions">
+        <a href="{% url 'companies:detail' company.pk %}" class="dash-btn dash-btn--secondary">Cancel</a>
+        <button type="submit" class="dash-btn dash-btn--danger"><i class="fas fa-trash"></i> Delete Company</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
