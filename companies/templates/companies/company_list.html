@@ -1,105 +1,103 @@
 {% extends 'dashboard/base.html' %}
 {% load static %}
-{% block title %}Companies{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'companies/css/companies.css' %}">{% endblock %}
 
-{% block content %}
-<div class="dash-page">
-  <div class="dash-header">
-    <div>
-      <h1 class="dash-title">Companies</h1>
-      <p class="dash-subtitle">Manage your business accounts</p>
-    </div>
-    <div class="dash-header-actions">
-      <a href="{% url 'companies:import' %}" class="dash-btn dash-btn--secondary">
-        <i class="fas fa-upload"></i> Import
-      </a>
-      <a href="{% url 'companies:create' %}" class="dash-btn dash-btn--primary">
-        <i class="fas fa-plus"></i> New Company
-      </a>
-    </div>
-  </div>
+{% block title %}Companies - RittikDesk AI{% endblock %}
 
-  {% include 'dashboard/components/messages.html' %}
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'companies/css/companies.css' %}" rel="stylesheet">
+{% endblock %}
 
-  <div class="company-toolbar">
-    <div class="company-search-group">
-      <i class="fas fa-search company-search-icon"></i>
-      <input type="text" id="companySearch" class="company-input" placeholder="Search companies..." value="{{ search }}" autocomplete="off">
+{% block dashboard_content %}
+
+<div class="contacts-header">
+  <h2>Companies <span class="contacts-count" id="companyCount">({{ page_obj.paginator.count|default:"0" }})</span></h2>
+  <div class="contacts-toolbar">
+    <div class="search-box">
+      <i class="fas fa-search search-box-icon"></i>
+      <input type="text" id="companySearch" placeholder="Search companies..." autocomplete="off" value="{{ search }}">
+      <button class="search-box-clear" id="searchClear" aria-label="Clear search">&times;</button>
+      <span class="search-box-spinner" id="searchSpinner"></span>
     </div>
-    <div class="company-filter-group">
-      <select id="filterIndustry" class="company-input company-filter">
+    <div class="filter-group">
+      <select id="filterIndustry">
         <option value="">All Industries</option>
         {% for ind in industries %}<option value="{{ ind }}" {% if current_industry == ind %}selected{% endif %}>{{ ind }}</option>{% endfor %}
       </select>
-      <select id="filterStatus" class="company-input company-filter">
+      <select id="filterStatus">
         <option value="">All Statuses</option>
         {% for st in statuses %}<option value="{{ st }}" {% if current_status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
       </select>
-      <select id="filterCountry" class="company-input company-filter">
+      <select id="filterCountry">
         <option value="">All Countries</option>
         {% for c in countries %}<option value="{{ c }}" {% if current_country == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
       </select>
-      <select id="sortCompanies" class="company-input company-filter">
+      <select id="sortCompanies">
         <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Newest</option>
         <option value="oldest" {% if current_sort == 'oldest' %}selected{% endif %}>Oldest</option>
-        <option value="name_asc" {% if current_sort == 'name_asc' %}selected{% endif %}>Name A–Z</option>
-        <option value="name_desc" {% if current_sort == 'name_desc' %}selected{% endif %}>Name Z–A</option>
+        <option value="name_asc" {% if current_sort == 'name_asc' %}selected{% endif %}>Name A-Z</option>
+        <option value="name_desc" {% if current_sort == 'name_desc' %}selected{% endif %}>Name Z-A</option>
         <option value="employees_desc" {% if current_sort == 'employees_desc' %}selected{% endif %}>Employees ↓</option>
-        <option value="employees_asc" {% if current_sort == 'employees_asc' %}selected{% endif %}>Employees ↑</option>
         <option value="revenue_desc" {% if current_sort == 'revenue_desc' %}selected{% endif %}>Revenue ↓</option>
-        <option value="revenue_asc" {% if current_sort == 'revenue_asc' %}selected{% endif %}>Revenue ↑</option>
       </select>
     </div>
+    <a href="{% url 'companies:create' %}" class="btn btn-primary btn-sm rounded-pill px-3 glow-btn" id="addCompanyBtn">
+      <i class="fas fa-plus me-1"></i>Add Company
+    </a>
   </div>
+</div>
 
-  <div class="company-bulk-bar" id="bulkBar" style="display:none">
-    <span id="selectedCount">0 selected</span>
-    <div class="company-bulk-actions">
-      <select id="bulkStatus" class="company-input" style="width:auto;display:inline-block">
-        <option value="">Change status…</option>
+{% csrf_token %}
+
+<div class="dash-card" id="companiesCard">
+  {% if page_obj %}
+
+  <div class="bulk-bar" id="bulkBar" style="display:none">
+    <div class="bulk-bar-inner">
+      <span class="bulk-count" id="selectedCount">0 selected</span>
+      <select id="bulkStatus" class="filter-group-select" aria-label="Change status">
+        <option value="">Change status...</option>
         {% for st in statuses %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
       </select>
-      <button class="dash-btn dash-btn--sm dash-btn--primary" id="bulkUpdateBtn"><i class="fas fa-check"></i> Update</button>
-      <button class="dash-btn dash-btn--sm dash-btn--danger" id="bulkDeleteBtn"><i class="fas fa-trash"></i> Delete</button>
-      <button class="dash-btn dash-btn--sm dash-btn--secondary" id="bulkExportBtn"><i class="fas fa-download"></i> Export</button>
-      <button class="dash-btn dash-btn--sm dash-btn--ghost" id="bulkClearBtn">Clear</button>
+      <button class="bulk-delete-btn" id="bulkUpdateBtn"><i class="fas fa-check me-1"></i>Update</button>
+      <button class="bulk-delete-btn" id="bulkDeleteBtn"><i class="fas fa-trash me-1"></i>Delete Selected</button>
+      <button class="bulk-export-btn" id="bulkExportBtn"><i class="fas fa-download me-1"></i>Export CSV</button>
+      <button class="bulk-clear-btn" id="bulkClearBtn" title="Clear selection">&times;</button>
     </div>
   </div>
 
-  <div class="company-table-container">
-    {% if page_obj %}
-    <table class="company-table">
+  <div class="dash-table-wrap">
+    <table class="dash-table">
       <thead>
         <tr>
-          <th class="company-checkbox"><input type="checkbox" id="selectAll"></th>
-          <th>Company</th>
+          <th class="contact-checkbox"><input type="checkbox" id="selectAll"></th>
+          <th>Name</th>
           <th>Industry</th>
           <th>Location</th>
           <th>Employees</th>
           <th>Revenue</th>
           <th>Status</th>
-          <th class="company-actions-th">Actions</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody id="companyTableBody">
         {% for company in companies %}
-        <tr data-id="{{ company.pk }}">
-          <td class="company-checkbox"><input type="checkbox" name="company_id" value="{{ company.pk }}"></td>
+        <tr>
+          <td class="contact-checkbox"><input type="checkbox" name="company_id" value="{{ company.pk }}"></td>
           <td>
-            <div class="company-cell-name">
-              <span class="company-avatar">{{ company.name|slice:":2"|upper }}</span>
+            <div class="dash-td-name">
+              <span class="contact-avatar">{{ company.name|slice:":2"|upper }}</span>
               <div>
-                <div class="company-name"><a href="{% url 'companies:detail' company.pk %}">{{ company.name }}</a></div>
-                {% if company.email %}<div class="company-meta">{{ company.email }}</div>{% endif %}
+                <div class="contact-name">{{ company.name }}</div>
+                {% if company.email %}<div class="contact-company">{{ company.email }}</div>{% endif %}
               </div>
             </div>
           </td>
-          <td><span class="company-badge company-badge--industry">{{ company.industry|default:'—' }}</span></td>
-          <td>{% if company.city %}{{ company.city }}{% if company.country %}, {{ company.country }}{% endif %}{% else %}—{% endif %}</td>
-          <td>{{ company.employees|default:'—' }}</td>
+          <td>{{ company.industry|default:"—" }}</td>
+          <td>{% if company.city %}{{ company.city }}{% if company.country %}, {{ company.country }}{% endif %}{% elif company.country %}{{ company.country }}{% else %}—{% endif %}</td>
+          <td>{{ company.employees|default:"—" }}</td>
           <td>{% if company.annual_revenue %}${{ company.annual_revenue|floatformat:0 }}{% else %}—{% endif %}</td>
-          <td><span class="company-badge company-badge--{{ company.status|lower }}">{{ company.status }}</span></td>
+          <td><span class="contact-tag contact-tag--{{ company.status|lower }}">{{ company.status }}</span></td>
           <td>
             <a href="{% url 'companies:detail' company.pk %}" class="dash-td-btn" title="View"><i class="fas fa-eye"></i></a>
             <a href="{% url 'companies:update' company.pk %}" class="dash-td-btn" title="Edit"><i class="fas fa-edit"></i></a>
@@ -109,35 +107,63 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
 
-    {% if page_obj.paginator.num_pages > 1 %}
-    <div class="company-pagination">
-      <span class="pagination-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)</span>
-      <div class="pagination-links">
-        {% if page_obj.has_previous %}
-        <a href="?page=1{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&laquo;&laquo;</a>
-        <a href="?page={{ page_obj.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&laquo;</a>
-        {% endif %}
-        <span class="pagination-current">{{ page_obj.number }}</span>
-        {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&raquo;</a>
-        <a href="?page={{ page_obj.paginator.num_pages }}{% if search %}&search={{ search }}{% endif %}{% if current_industry %}&industry={{ current_industry }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_country %}&country={{ current_country }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="dash-btn dash-btn--sm">&raquo;&raquo;</a>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="contacts-pagination" id="companyPagination">
+    {% if page_obj.has_previous %}
+    <a href="?search={{ search|urlencode }}&industry={{ current_industry|urlencode }}&status={{ current_status|urlencode }}&country={{ current_country|urlencode }}&sort={{ current_sort }}&page=1">&laquo;</a>
+    <a href="?search={{ search|urlencode }}&industry={{ current_industry|urlencode }}&status={{ current_status|urlencode }}&country={{ current_country|urlencode }}&sort={{ current_sort }}&page={{ page_obj.previous_page_number }}">&lsaquo;</a>
     {% else %}
-    <div class="company-empty">
-      <div class="company-empty-icon"><i class="fas fa-building"></i></div>
-      <h3>No companies yet</h3>
-      <p>Start building your CRM by adding your first company.</p>
-      <a href="{% url 'companies:create' %}" class="dash-btn dash-btn--primary"><i class="fas fa-plus"></i> Add Company</a>
-    </div>
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
+    {% endif %}
+
+    {% for i in page_obj.paginator.page_range %}
+      {% if i == page_obj.number %}
+      <span class="current">{{ i }}</span>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+      <a href="?search={{ search|urlencode }}&industry={{ current_industry|urlencode }}&status={{ current_status|urlencode }}&country={{ current_country|urlencode }}&sort={{ current_sort }}&page={{ i }}">{{ i }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <a href="?search={{ search|urlencode }}&industry={{ current_industry|urlencode }}&status={{ current_status|urlencode }}&country={{ current_country|urlencode }}&sort={{ current_sort }}&page={{ page_obj.next_page_number }}">&rsaquo;</a>
+    <a href="?search={{ search|urlencode }}&industry={{ current_industry|urlencode }}&status={{ current_status|urlencode }}&country={{ current_country|urlencode }}&sort={{ current_sort }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+    {% else %}
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
     {% endif %}
   </div>
+  <div class="pagination-info">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} ({{ page_obj.paginator.count }} total)
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="dash-empty">
+    <div class="dash-empty-icon"><i class="fas fa-building"></i></div>
+    <h4>No companies yet</h4>
+    <p>Start building your CRM by adding your first company.</p>
+    <a href="{% url 'companies:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
+      <i class="fas fa-plus me-1"></i>Add Your First Company
+    </a>
+  </div>
+  {% endif %}
+
+  <div class="search-no-results" id="searchNoResults" style="display:none">
+    <div class="search-no-results-icon"><i class="fas fa-search"></i></div>
+    <h4>No companies found</h4>
+    <p id="searchNoResultsMsg">Try adjusting your search or filter criteria.</p>
+    <button class="btn btn-outline-light btn-sm rounded-pill px-3" id="clearFiltersBtn">
+      <i class="fas fa-times me-1"></i>Clear Filters
+    </button>
+  </div>
 </div>
+
 {% endblock %}
 
-{% block extra_js %}
+{% block extra_scripts %}
+{{ block.super }}
 <script src="{% static 'companies/js/companies.js' %}"></script>
 {% endblock %}

@@ -93,13 +93,11 @@
   {% endif %}
 
   {% else %}
-  <div style="text-align:center;padding:40px 20px">
-    <div style="font-size:3rem;margin-bottom:12px;opacity:0.3"><i class="fas fa-gears"></i></div>
-    <h5>No Workflows Yet</h5>
-    <p style="color:var(--dash-text-sec);max-width:400px;margin:8px auto">
-      Automate your CRM tasks — create a workflow to trigger actions when events happen.
-    </p>
-    <a href="{% url 'workflows:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn mt-2">
+  <div class="dash-empty">
+    <div class="dash-empty-icon"><i class="fas fa-gears"></i></div>
+    <h4>No Workflows Yet</h4>
+    <p>Automate your CRM tasks — create a workflow to trigger actions when events happen.</p>
+    <a href="{% url 'workflows:create' %}" class="btn btn-primary rounded-pill px-4 glow-btn">
       <i class="fas fa-plus me-1"></i>Create Your First Workflow
     </a>
   </div>

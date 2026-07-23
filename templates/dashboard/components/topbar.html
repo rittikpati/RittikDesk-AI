@@ -6,8 +6,11 @@
         </button>
         <div class="dash-search">
             <i class="fas fa-search"></i>
-            <input type="text" placeholder="Search anything..." id="dashSearch" autocomplete="off">
+            <input type="text" placeholder="Search contacts, companies, deals, tasks..." id="dashSearch" autocomplete="off" aria-label="Global search">
             <span class="dash-search-hint">Ctrl+K</span>
+            <div class="gs-dropdown" id="gsDropdown" role="listbox" aria-label="Search results">
+                <div id="gsResults"></div>
+            </div>
         </div>
     </div>
 

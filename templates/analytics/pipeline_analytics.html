@@ -1,0 +1,472 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Sales Pipeline Analytics - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'analytics/css/analytics.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+
+<!-- Page Header -->
+<div class="dash-row">
+  <div class="dash-col-12">
+    <div class="analytics-header">
+      <div>
+        <h1 class="analytics-title">
+          <i class="fas fa-chart-line"></i>
+          Sales Pipeline Analytics
+        </h1>
+        <p class="analytics-subtitle">Real-time revenue intelligence from your deal pipeline</p>
+      </div>
+      <div class="analytics-header-actions">
+        <span class="analytics-live-badge">
+          <span class="analytics-live-dot"></span>
+          Live Data
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="dash-row">
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-total">
+      <div class="kpi-icon"><i class="fas fa-handshake"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Total Deals</div>
+        <div class="kpi-value" data-count="{{ kpi.total_deals }}">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-open">
+      <div class="kpi-icon"><i class="fas fa-folder-open"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Open Deals</div>
+        <div class="kpi-value" data-count="{{ kpi.open_deals_count }}">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-won">
+      <div class="kpi-icon"><i class="fas fa-trophy"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Won Deals</div>
+        <div class="kpi-value" data-count="{{ kpi.won_deals_count }}">0</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-lost">
+      <div class="kpi-icon"><i class="fas fa-times-circle"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Lost Deals</div>
+        <div class="kpi-value" data-count="{{ kpi.lost_deals_count }}">0</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dash-row">
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-pipeline">
+      <div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Pipeline Value</div>
+        <div class="kpi-value currency" data-amount="{{ kpi.pipeline_value }}">$0</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-revenue">
+      <div class="kpi-icon"><i class="fas fa-chart-bar"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Won Revenue</div>
+        <div class="kpi-value currency" data-amount="{{ kpi.won_revenue }}">$0</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-avg">
+      <div class="kpi-icon"><i class="fas fa-balance-scale"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Avg Deal Value</div>
+        <div class="kpi-value currency" data-amount="{{ kpi.avg_deal_value }}">$0</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-3">
+    <div class="analytics-card kpi-card kpi-rate">
+      <div class="kpi-icon"><i class="fas fa-percentage"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Win Rate</div>
+        <div class="kpi-value"><span data-count="{{ kpi.win_rate }}">0</span>%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pipeline Stage Breakdown -->
+<div class="dash-row">
+  <div class="dash-col-12">
+    <div class="analytics-card analytics-panel">
+      <div class="analytics-panel-head">
+        <h2 class="analytics-panel-title"><i class="fas fa-filter"></i> Pipeline by Stage</h2>
+      </div>
+      <div class="pipeline-stages">
+        {% for stage in stages %}
+        <div class="pipeline-stage" data-color="{{ stage.color }}">
+          <div class="pipeline-stage-header">
+            <span class="pipeline-stage-dot" style="background:{{ stage.color }}"></span>
+            <span class="pipeline-stage-name">{{ stage.stage }}</span>
+            <span class="pipeline-stage-count">{{ stage.count }} deal{{ stage.count|pluralize }}</span>
+          </div>
+          <div class="pipeline-stage-bar-track">
+            {% widthratio stage.count kpi.total_deals 100 as pct %}
+            <div class="pipeline-stage-bar" style="width:{{ pct }}%;background:{{ stage.color }}"></div>
+          </div>
+          <div class="pipeline-stage-value">${{ stage.value|floatformat:0 }}</div>
+        </div>
+        {% empty %}
+        <div class="analytics-empty">
+          <i class="fas fa-inbox"></i>
+          <p>No deals in pipeline yet. Create your first deal to see analytics.</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Revenue Forecast + Monthly Trend -->
+<div class="dash-row">
+  <div class="dash-col-4">
+    <div class="analytics-card analytics-panel forecast-panel">
+      <div class="analytics-panel-head">
+        <h2 class="analytics-panel-title"><i class="fas fa-crystal-ball"></i> Revenue Forecast</h2>
+      </div>
+      <div class="forecast-items">
+        <div class="forecast-item">
+          <div class="forecast-label">This Month</div>
+          <div class="forecast-value currency" data-amount="{{ forecast.estimated_this_month }}">$0</div>
+          <div class="forecast-sub">Expected close</div>
+        </div>
+        <div class="forecast-divider"></div>
+        <div class="forecast-item">
+          <div class="forecast-label">Next Month</div>
+          <div class="forecast-value currency" data-amount="{{ forecast.estimated_next_month }}">$0</div>
+          <div class="forecast-sub">Projected close</div>
+        </div>
+        <div class="forecast-divider"></div>
+        <div class="forecast-item highlight">
+          <div class="forecast-label">Projected Pipeline</div>
+          <div class="forecast-value currency" data-amount="{{ forecast.projected_pipeline }}">$0</div>
+          <div class="forecast-sub">Probability-weighted</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-8">
+    <div class="analytics-card analytics-panel">
+      <div class="analytics-panel-head">
+        <h2 class="analytics-panel-title"><i class="fas fa-chart-area"></i> Revenue Trend</h2>
+        <span class="analytics-panel-sub">Last 6 months</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="revenueTrendChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Top Opportunities + Recent Won -->
+<div class="dash-row">
+  <div class="dash-col-6">
+    <div class="analytics-card analytics-panel">
+      <div class="analytics-panel-head">
+        <h2 class="analytics-panel-title"><i class="fas fa-star"></i> Top Opportunities</h2>
+      </div>
+      <div class="deal-table-wrap">
+        <table class="deal-table">
+          <thead>
+            <tr>
+              <th>Deal</th>
+              <th>Value</th>
+              <th>Stage</th>
+              <th>Probability</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for deal in top_opportunities %}
+            <tr>
+              <td>
+                <a href="{% url 'deals:detail' deal.pk %}" class="deal-link">
+                  {{ deal.deal_name }}
+                </a>
+              </td>
+              <td class="currency-cell" data-amount="{{ deal.value }}">-</td>
+              <td>
+                <span class="stage-badge stage-{{ deal.stage|slugify }}">{{ deal.stage }}</span>
+              </td>
+              <td>
+                <div class="prob-bar">
+                  <div class="prob-bar-fill" style="width:{{ deal.probability }}%"></div>
+                  <span class="prob-text">{{ deal.probability }}%</span>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="4" class="analytics-empty-cell">
+                <i class="fas fa-inbox"></i> No open deals
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-6">
+    <div class="analytics-card analytics-panel">
+      <div class="analytics-panel-head">
+        <h2 class="analytics-panel-title"><i class="fas fa-trophy"></i> Recent Won Deals</h2>
+      </div>
+      <div class="deal-table-wrap">
+        <table class="deal-table">
+          <thead>
+            <tr>
+              <th>Deal</th>
+              <th>Value</th>
+              <th>Closed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for deal in recent_won %}
+            <tr>
+              <td>
+                <a href="{% url 'deals:detail' deal.pk %}" class="deal-link">
+                  {{ deal.deal_name }}
+                </a>
+              </td>
+              <td class="currency-cell" data-amount="{{ deal.value }}">-</td>
+              <td class="date-cell">{{ deal.updated_at|date:"M d, Y" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="3" class="analytics-empty-cell">
+                <i class="fas fa-inbox"></i> No won deals yet
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Source + Priority Breakdown -->
+<div class="dash-row">
+  <div class="dash-col-6">
+    <div class="analytics-card analytics-panel">
+      <div class="analytics-panel-head">
+        <h2 class="analytics-panel-title"><i class="fas fa-crosshairs"></i> Deals by Source</h2>
+      </div>
+      <div class="chart-container chart-container-sm">
+        <canvas id="sourceChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="dash-col-6">
+    <div class="analytics-card analytics-panel">
+      <div class="analytics-panel-head">
+        <h2 class="analytics-panel-title"><i class="fas fa-flag"></i> Deals by Priority</h2>
+      </div>
+      <div class="chart-container chart-container-sm">
+        <canvas id="priorityChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+(function(){
+  /* ── Animate counters ── */
+  document.querySelectorAll('[data-count]').forEach(function(el){
+    var target = parseFloat(el.dataset.count) || 0;
+    var isPercent = el.parentElement && el.parentElement.textContent.includes('%');
+    var start = 0;
+    var duration = 900;
+    var startTime = null;
+    function step(ts){
+      if(!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var current = Math.round(eased * target);
+      el.textContent = isPercent ? current + '%' : current.toLocaleString();
+      if(progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+
+  /* ── Format currency values ── */
+  document.querySelectorAll('[data-amount]').forEach(function(el){
+    var val = parseFloat(el.dataset.amount) || 0;
+    el.textContent = '$' + val.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  });
+
+  /* ── Currency cells in tables ── */
+  document.querySelectorAll('[data-amount]').forEach(function(el){
+    if(el.classList.contains('currency-cell')){
+      var val = parseFloat(el.dataset.amount) || 0;
+      el.textContent = '$' + val.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    }
+  });
+
+  /* ── Chart.js charts ── */
+  if(typeof Chart !== 'undefined'){
+    var months = {{ monthly_trend|safe }};
+    var monthLabels = months.map(function(m){ return m.month; });
+    var monthValues = months.map(function(m){ return parseFloat(m.won_revenue); });
+
+    new Chart(document.getElementById('revenueTrendChart'), {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets: [{
+          label: 'Won Revenue',
+          data: monthValues,
+          borderColor: '#00D9A6',
+          backgroundColor: 'rgba(0,217,166,0.08)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: '#00D9A6',
+          pointBorderColor: '#0a0a1a',
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(14,14,22,0.95)',
+            titleColor: '#e0e0e0',
+            bodyColor: '#e0e0e0',
+            borderColor: 'rgba(108,99,255,0.2)',
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              label: function(ctx){ return '$' + ctx.parsed.y.toLocaleString(); }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.03)' },
+            ticks: { color: 'rgba(235,235,245,0.4)', font: { size: 10 } }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.03)' },
+            ticks: {
+              color: 'rgba(235,235,245,0.4)',
+              font: { size: 10 },
+              callback: function(v){ return '$' + v.toLocaleString(); }
+            }
+          }
+        }
+      }
+    });
+
+    /* ── Source Doughnut ── */
+    var sourceData = {{ source_breakdown|safe }};
+    var sourceLabels = sourceData.map(function(s){ return s.source; });
+    var sourceCounts = sourceData.map(function(s){ return s.count; });
+    var sourceColors = ['#6C63FF','#00B4D8','#FFB800','#00D9A6','#E040FB','#FF8A65','#FF6B6B','#3699FF'];
+    new Chart(document.getElementById('sourceChart'), {
+      type: 'doughnut',
+      data: {
+        labels: sourceLabels,
+        datasets: [{
+          data: sourceCounts,
+          backgroundColor: sourceColors.slice(0, sourceLabels.length),
+          borderColor: '#0a0a1a',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '60%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: 'rgba(235,235,245,0.6)',
+              font: { size: 10 },
+              padding: 12,
+              usePointStyle: true,
+              pointStyleWidth: 8,
+            }
+          }
+        }
+      }
+    });
+
+    /* ── Priority Bar ── */
+    var priorityData = {{ priority_breakdown|safe }};
+    var priorityLabels = priorityData.map(function(p){ return p.priority; });
+    var priorityCounts = priorityData.map(function(p){ return p.count; });
+    var priorityColorMap = { Low: '#00B4D8', Medium: '#FFB800', High: '#FF8A65', Urgent: '#FF6B6B' };
+    var priorityColors = priorityLabels.map(function(l){ return priorityColorMap[l] || '#6C63FF'; });
+    new Chart(document.getElementById('priorityChart'), {
+      type: 'bar',
+      data: {
+        labels: priorityLabels,
+        datasets: [{
+          label: 'Deals',
+          data: priorityCounts,
+          backgroundColor: priorityColors.map(function(c){ return c + '33'; }),
+          borderColor: priorityColors,
+          borderWidth: 1,
+          borderRadius: 6,
+          barThickness: 36,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: 'rgba(235,235,245,0.5)', font: { size: 10, weight: '500' } }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.03)' },
+            ticks: { color: 'rgba(235,235,245,0.4)', font: { size: 10 }, stepSize: 1 },
+            beginAtZero: true,
+          }
+        }
+      }
+    });
+  }
+})();
+</script>
+<script src="{% static 'analytics/js/analytics.js' %}"></script>
+{% endblock %}

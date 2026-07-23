@@ -1,3 +1,4 @@
+import re
 import json
 import logging
 from datetime import datetime, timedelta
@@ -101,6 +102,60 @@ def _event_stream(conversation, request=None):
             if result:
                 yield from _yield_action_result(conversation, result)
                 return
+
+        # ── Email Disambiguation Handler ──
+        if last_msg and last_msg.role == 'user':
+            user_text = last_msg.content.strip()
+            selection = None
+            if re.match(r'^\d+$', user_text):
+                selection = int(user_text)
+            elif re.match(r'^(?:first|1st|one|option\s*1)\b', user_text, re.IGNORECASE):
+                selection = 1
+            elif re.match(r'^(?:second|2nd|two|option\s*2)\b', user_text, re.IGNORECASE):
+                selection = 2
+            elif re.match(r'^(?:third|3rd|three|option\s*3)\b', user_text, re.IGNORECASE):
+                selection = 3
+
+            if selection and len(history) >= 2:
+                prev_msg = history[-2]
+                if prev_msg.role == 'assistant' and 'I found multiple people matching' in prev_msg.content:
+                    name_match = re.search(r'matching\s+\*\*"?(.+?)"?\*\*', prev_msg.content)
+                    original_name = name_match.group(1).strip() if name_match else ''
+
+                    entries = re.split(r'\n\s*(\d+)\.\s*\n', prev_msg.content)
+                    people = []
+                    for i in range(1, len(entries), 2):
+                        idx = int(entries[i])
+                        block = entries[i + 1] if i + 1 < len(entries) else ''
+                        lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
+                        if len(lines) >= 2:
+                            pname = lines[0]
+                            pemail = ''
+                            for l in lines[1:]:
+                                em = re.search(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+', l)
+                                if em:
+                                    pemail = em.group()
+                                    break
+                            people.append({'idx': idx, 'name': pname, 'email': pemail})
+
+                    if 1 <= selection <= len(people):
+                        chosen = people[selection - 1]
+                        from .action_layer import ComposeEmailAction
+                        composer = ComposeEmailAction()
+                        if chosen['email']:
+                            reconstructed = f'send email to {chosen["name"]} <{chosen["email"]}>'
+                        else:
+                            reconstructed = f'write an email to {chosen["name"]}'
+                        logger.info(
+                            'Email disambiguation: selected %d → %s <%s>',
+                            selection, chosen['name'], chosen['email'],
+                        )
+                        if request is not None:
+                            composer._current_request = request
+                        result = composer.execute(reconstructed, conversation.user)
+                        if result:
+                            yield from _yield_action_result(conversation, result)
+                            return
 
         # ── CRM Data Query Detection (DB-only, no LLM) ──
         if last_msg and last_msg.role == 'user':

@@ -1,17 +1,133 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import JsonResponse
+from django.views import View
 from django.views.generic import TemplateView
-from contacts.models import Contact
-from leads.models import Lead
-from campaigns.models import Campaign
-from tasks.models import Task
-from calendars.models import Event
-from deals.models import Deal
-from companies.models import Company
-from emails.models import EmailMessage
-from django.db.models import Sum, Count
+from django.db.models import Q, Sum, Count
 from django.utils import timezone
 from datetime import timedelta
+
+from contacts.models import Contact
+from companies.models import Company
+from leads.models import Lead
+from deals.models import Deal
+from tasks.models import Task
+from campaigns.models import Campaign
+from emails.models import EmailMessage
+from calendars.models import Event
 from .services import DashboardIntelligenceService
+
+
+LIMIT_PER_MODULE = 5
+
+
+class GlobalSearchView(LoginRequiredMixin, View):
+    def get(self, request):
+        q = request.GET.get('q', '').strip()
+        if len(q) < 2:
+            return JsonResponse({'results': {}, 'query': q})
+
+        user = request.user
+        results = {}
+
+        contacts = Contact.objects.filter(
+            Q(owner=user) & (Q(full_name__icontains=q) | Q(email__icontains=q) | Q(company__icontains=q) | Q(phone__icontains=q))
+        ).order_by('full_name')[:LIMIT_PER_MODULE]
+        results['contacts'] = [
+            {
+                'id': c.pk,
+                'name': c.full_name,
+                'subtitle': c.email or c.company or '',
+                'icon': 'fas fa-user',
+                'detail_url': f'/contacts/{c.pk}/',
+            }
+            for c in contacts
+        ]
+
+        companies = Company.objects.filter(
+            Q(owner=user) & (Q(name__icontains=q) | Q(email__icontains=q) | Q(industry__icontains=q) | Q(city__icontains=q))
+        ).order_by('name')[:LIMIT_PER_MODULE]
+        results['companies'] = [
+            {
+                'id': c.pk,
+                'name': c.name,
+                'subtitle': c.industry or c.email or '',
+                'icon': 'fas fa-building',
+                'detail_url': f'/companies/{c.pk}/',
+            }
+            for c in companies
+        ]
+
+        leads = Lead.objects.filter(
+            Q(owner=user) & (Q(lead_name__icontains=q) | Q(email__icontains=q) | Q(company__icontains=q))
+        ).order_by('lead_name')[:LIMIT_PER_MODULE]
+        results['leads'] = [
+            {
+                'id': l.pk,
+                'name': l.lead_name,
+                'subtitle': l.email or l.company or '',
+                'icon': 'fas fa-tag',
+                'detail_url': f'/leads/{l.pk}/',
+            }
+            for l in leads
+        ]
+
+        deals = Deal.objects.filter(
+            Q(owner=user) & (Q(deal_name__icontains=q) | Q(company__icontains=q))
+        ).order_by('deal_name')[:LIMIT_PER_MODULE]
+        results['deals'] = [
+            {
+                'id': d.pk,
+                'name': d.deal_name,
+                'subtitle': d.company or '',
+                'icon': 'fas fa-handshake',
+                'detail_url': f'/deals/{d.pk}/',
+            }
+            for d in deals
+        ]
+
+        tasks = Task.objects.filter(
+            Q(owner=user) & (Q(title__icontains=q) | Q(description__icontains=q))
+        ).order_by('title')[:LIMIT_PER_MODULE]
+        results['tasks'] = [
+            {
+                'id': t.pk,
+                'name': t.title,
+                'subtitle': t.due_date.strftime('%b %d, %Y') if t.due_date else '',
+                'icon': 'fas fa-check-circle',
+                'detail_url': f'/tasks/{t.pk}/',
+            }
+            for t in tasks
+        ]
+
+        campaigns = Campaign.objects.filter(
+            Q(owner=user) & (Q(name__icontains=q) | Q(subject__icontains=q))
+        ).order_by('name')[:LIMIT_PER_MODULE]
+        results['campaigns'] = [
+            {
+                'id': c.pk,
+                'name': c.name,
+                'subtitle': c.subject or '',
+                'icon': 'fas fa-bullhorn',
+                'detail_url': f'/campaigns/{c.pk}/',
+            }
+            for c in campaigns
+        ]
+
+        emails = EmailMessage.objects.filter(
+            Q(owner=user) & (Q(subject__icontains=q) | Q(to_emails__icontains=q) | Q(body_plain__icontains=q))
+        ).order_by('-sent_at')[:LIMIT_PER_MODULE]
+        results['emails'] = [
+            {
+                'id': e.pk,
+                'name': e.subject,
+                'subtitle': e.to_emails or '',
+                'icon': 'fas fa-envelope',
+                'detail_url': f'/emails/{e.pk}/',
+            }
+            for e in emails
+        ]
+
+        return JsonResponse({'results': results, 'query': q})
 
 
 class DashboardHomeView(LoginRequiredMixin, TemplateView):
@@ -90,14 +206,12 @@ class DashboardHomeView(LoginRequiredMixin, TemplateView):
         context['inactive_companies'] = company_qs.filter(status='Inactive').count()
         context['top_industries'] = company_qs.exclude(industry='').values('industry').annotate(count=Count('id')).order_by('-count')[:5]
 
-        # ── Email Stats ──────────────────────────────────────────
         email_qs = EmailMessage.objects.filter(owner=user)
         context['total_emails'] = email_qs.count()
         context['sent_emails'] = email_qs.filter(status='sent').count()
         context['draft_emails'] = email_qs.filter(status='draft', is_draft=True).count()
         context['failed_emails'] = email_qs.filter(status='failed').count()
 
-        # ── AI Dashboard Intelligence ──────────────────────────────
         svc = DashboardIntelligenceService(user)
 
         context.update(svc.get_card_stats())

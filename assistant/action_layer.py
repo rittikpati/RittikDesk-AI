@@ -3243,46 +3243,290 @@ class AssignLeadAction(BaseAction):
 @register
 class CreateDealAction(BaseAction):
     action_type = 'create_deal'
-    keywords = frozenset({'create', 'add', 'new', 'make', 'deal'})
+    keywords = frozenset({
+        'create', 'add', 'new', 'make', 'start', 'open', 'launch',
+        'deal', 'pipeline',
+    })
     patterns = [
-        re.compile(r'(create|add|make|new)\s+(a\s+)?(deal)'),
+        re.compile(r'(?:create|add|make|new|start|open|launch)\s+(?:a\s+)?(?:new\s+)?deal\b'),
+        re.compile(r'deal\s+(?:called|named|for|titled)\b'),
+        re.compile(r'(?:i\s+)?(?:want\s+to\s+)?(?:create|add|make)\s+.*\bdeal\b'),
+        re.compile(r'\bnew\s+deal\b'),
     ]
 
+    _STAGE_ALIASES = {
+        'new': 'New', 'qualified': 'Qualified',
+        'proposal': 'Proposal Sent', 'proposal sent': 'Proposal Sent',
+        'negotiation': 'Negotiation',
+        'contract': 'Contract Review', 'contract review': 'Contract Review',
+        'won': 'Won', 'closed won': 'Won',
+        'lost': 'Lost', 'closed lost': 'Lost',
+    }
+    _SOURCE_ALIASES = {
+        'website': 'Website', 'referral': 'Referral', 'linkedin': 'LinkedIn',
+        'facebook': 'Facebook', 'instagram': 'Instagram',
+        'cold email': 'Cold Email', 'cold outreach': 'Cold Email',
+        'event': 'Event', 'conference': 'Event', 'webinar': 'Event',
+        'other': 'Other',
+    }
+
     def _parse(self, text):
+        params = {}
         body = text
+
+        # 1. Strip action prefix
+        m = re.search(
+            r'\b(?:create|add|make|new|start|open|launch)\s+'
+            r'(?:a\s+)?(?:new\s+)?(?:deal\s+)'
+            r'(?:(?:called|named|for|titled)\s+)?',
+            body, flags=re.IGNORECASE,
+        )
+        if m:
+            body = body[m.end():].strip()
         body = re.sub(
-            r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:create|add|make|new)\s+(?:a\s+)?(?:deal\s+(?:for\s+|called\s+|named\s+|titled\s+)?)?',
-            '', body, flags=re.IGNORECASE,
+            r'^(?:for|named|called|about|titled)\s+', '', body, flags=re.IGNORECASE,
         ).strip()
         body = _strip_leading_noise(body)
         body = re.sub(r"'s\s*$", '', body).strip()
-        return _extract_title(body)
+
+        # 2. Extract value: "$50,000", "50k", "worth $50,000", "value of 50000", "$50,000 deal"
+        val_match = re.search(
+            r'(?:worth|value\s+(?:of\s+)?|priced?\s+(?:at\s+)?)?'
+            r'\$?(\d[\d,.]*)\s*(?:k\b|K\b|,000\b)?',
+            body, flags=re.IGNORECASE,
+        )
+        if val_match:
+            raw_val = val_match.group(1).replace(',', '')
+            multiplier = 1
+            if val_match.group(0).lower().endswith('k'):
+                multiplier = 1000
+            elif val_match.group(0).lower().endswith(',000'):
+                multiplier = 1000
+            params['value'] = str(int(float(raw_val) * multiplier))
+            body = _remove_match(body, val_match)
+
+        # Also match "50k" pattern without $ sign
+        if 'value' not in params:
+            k_match = re.search(r'\b(\d+)\s*k\b', body, flags=re.IGNORECASE)
+            if k_match:
+                params['value'] = str(int(k_match.group(1)) * 1000)
+                body = _remove_match(body, k_match)
+
+        # 3. Extract stage: "in negotiation", "at proposal stage", "stage qualified"
+        stage_pat = '|'.join(reversed(sorted(self._STAGE_ALIASES.keys(), key=len)))
+        stage_match = re.search(
+            rf'(?:in|at|stage\s+(?:is\s+)?)\s+({stage_pat})\b',
+            body, flags=re.IGNORECASE,
+        )
+        if stage_match:
+            raw = stage_match.group(1).lower()
+            params['stage'] = self._STAGE_ALIASES.get(raw, raw.title())
+            body = _remove_match(body, stage_match)
+
+        # 4. Extract priority: "high priority", "urgent", "priority high"
+        priority, body = _extract_priority(body)
+        if priority:
+            params['priority'] = priority.capitalize()
+
+        # 5. Extract expected close date: "closing next month", "close date July 30", "due in 2 weeks"
+        date_match = re.search(
+            r'(?:clos(?:e|ing)|due|expected|target|by|before)\s+(?:date\s+)?(?:is\s+)?',
+            body, flags=re.IGNORECASE,
+        )
+        if date_match:
+            date_body = body[date_match.end():]
+            d, _ = _parse_date_from_text(date_body)
+            if d:
+                params['expected_close_date'] = d
+                body = body[:date_match.start()] + ' ' + body[date_match.end():]
+        else:
+            # Try bare date reference
+            d, cleaned = _parse_date_from_text(body)
+            if d:
+                params['expected_close_date'] = d
+                body = cleaned
+
+        # 6. Extract company: "at Acme Corp", "for Acme", "company: Acme"
+        company_match = re.search(
+            r'\b(?:at|for|with|company\s*[:=]\s*|client\s*[:=]\s*)'
+            r'\s*([A-Z][A-Za-z0-9\s&.,]{1,50}?)'
+            r'(?=\s+(?:worth|value|stage|priority| clos| due| source| probab)|$)',
+            body,
+        )
+        if company_match:
+            params['company'] = company_match.group(1).strip()
+            body = _remove_match(body, company_match)
+
+        # Also try "company: X" pattern
+        if 'company' not in params:
+            cm = re.search(r'\bcompany\s*[:=]\s*(.+?)(?:\s+(?:worth|value|stage|priority| clos| due| source)|$)', body, flags=re.IGNORECASE)
+            if cm:
+                params['company'] = cm.group(1).strip()
+                body = _remove_match(body, cm)
+
+        # 7. Extract source: "from LinkedIn", "source: referral"
+        source_match = re.search(
+            r'\b(?:from|source\s*[:=]\s*)\s*(' + '|'.join(self._SOURCE_ALIASES.keys()) + r')\b',
+            body, flags=re.IGNORECASE,
+        )
+        if source_match:
+            raw_src = source_match.group(1).lower()
+            params['source'] = self._SOURCE_ALIASES.get(raw_src, raw_src.title())
+            body = _remove_match(body, source_match)
+
+        # 8. Extract probability: "70% probability", "probability 70", "70 percent"
+        prob_match = re.search(
+            r'(\d{1,3})\s*%\s*(?:probab|chance|likely|prob)?',
+            body, flags=re.IGNORECASE,
+        )
+        if not prob_match:
+            prob_match = re.search(
+                r'probab(?:ility)?\s*(?:of\s+)?(\d{1,3})',
+                body, flags=re.IGNORECASE,
+            )
+        if prob_match:
+            prob_val = int(prob_match.group(1))
+            if 0 <= prob_val <= 100:
+                params['probability'] = prob_val
+                body = _remove_match(body, prob_match)
+
+        # 9. Extract description/notes: "description: X", "notes: X"
+        notes_match = re.search(r'\bnotes?\s*[:=]\s*(.+?)$', body, flags=re.IGNORECASE)
+        if notes_match:
+            params['notes'] = notes_match.group(1).strip()
+            body = body[:notes_match.start()].strip()
+
+        desc_match = re.search(r'\bdesc(?:ription)?\s*[:=]\s*(.+?)$', body, flags=re.IGNORECASE)
+        if desc_match:
+            params['description'] = desc_match.group(1).strip()
+            body = body[:desc_match.start()].strip()
+
+        # 10. Remaining body → deal name
+        name = _extract_title(body)
+        if name:
+            _DEAL_TRIGGER_WORDS = frozenset({
+                'create', 'add', 'make', 'new', 'start', 'open', 'launch',
+                'deal', 'pipeline', 'a', 'an', 'the',
+            })
+            name_words = set(name.lower().split())
+            if not name_words.issubset(_DEAL_TRIGGER_WORDS):
+                params['deal_name'] = name
+
+        return params
 
     def execute(self, text, user):
-        name = self._parse(text)
+        params = self._parse(text)
+        name = params.get('deal_name', '').strip()
         if not name:
-            return 'Could not identify the deal name. Please specify a name.'
+            return (
+                'I need a deal name to create a deal. '
+                'What should the deal be called?'
+            )
+
         from deals.models import Deal
+        from django.db import transaction
+        from django.core.exceptions import ValidationError
+
         if Deal.objects.filter(owner=user, deal_name__iexact=name).exists():
             return f'A deal named "{name}" already exists.'
-        deal = Deal.objects.create(owner=user, deal_name=name)
+
+        sid = None
+        try:
+            with transaction.atomic():
+                sid = transaction.savepoint()
+                deal = Deal(
+                    owner=user,
+                    deal_name=name,
+                    company=params.get('company', ''),
+                    value=params.get('value'),
+                    stage=params.get('stage', 'New'),
+                    priority=params.get('priority', 'Medium'),
+                    source=params.get('source', 'Website'),
+                    probability=params.get('probability', 0),
+                    expected_close_date=params.get('expected_close_date'),
+                    description=params.get('description', ''),
+                    notes=params.get('notes', ''),
+                )
+                deal.full_clean()
+                deal.save()
+                deal.refresh_from_db()
+
+                saved_pk = deal.pk
+                try:
+                    reloaded = Deal.objects.get(pk=saved_pk)
+                except Deal.DoesNotExist:
+                    transaction.savepoint_rollback(sid)
+                    logger.error(
+                        'Deal pk=%s was NOT committed -- DB get() returned None. '
+                        'user=%s msg=%s',
+                        saved_pk, user, text[:120],
+                    )
+                    return (
+                        'Failed to create deal: the record was not persisted '
+                        'to the database. Please try again.'
+                    )
+
+        except ValidationError as e:
+            logger.error(
+                'Deal validation failed for user=%s msg=%s error=%s',
+                user, text[:120], e.message_dict,
+            )
+            error_details = []
+            for field, errors in e.message_dict.items():
+                for err in errors:
+                    error_details.append(f'{field}: {err}')
+            return (
+                'Failed to create deal -- validation error(s):\n'
+                + '\n'.join(error_details)
+            )
+        except Exception as e:
+            logger.exception(
+                'Failed to create deal for user=%s msg=%s', user, text[:120],
+            )
+            if sid is not None:
+                logger.warning('Transaction rolled back at savepoint %s', sid)
+            return f'Failed to create deal: {e}'
+
         from workflows.services.engine import fire_trigger
         fire_trigger('deal_created', deal)
-        return f'Deal "{name}" created successfully in stage "New".'
+
+        value_str = f'${deal.value:,.2f}' if deal.value else 'Not set'
+        lines = [
+            f'Deal created successfully (ID: {deal.pk}): **{deal.deal_name}**',
+        ]
+        lines.append(f'Stage: {deal.stage}')
+        lines.append(f'Value: {deal.currency} {value_str}')
+        lines.append(f'Priority: {deal.priority}')
+        if deal.company:
+            lines.append(f'Company: {deal.company}')
+        if deal.source != 'Website':
+            lines.append(f'Source: {deal.source}')
+        if deal.probability:
+            lines.append(f'Probability: {deal.probability}%')
+        if deal.expected_close_date:
+            lines.append(f'Expected Close: {deal.expected_close_date}')
+        if deal.description:
+            lines.append(f'Description: {deal.description[:200]}')
+        if deal.notes:
+            lines.append(f'Notes: {deal.notes[:200]}')
+        return '\n'.join(lines)
 
 
 @register
 class UpdateDealAction(BaseAction):
     action_type = 'update_deal'
     keywords = frozenset({
-        'update', 'edit', 'change', 'modify', 'move', 'set',
-        'deal', 'pipeline', 'stage',
+        'update', 'edit', 'change', 'modify', 'move', 'set', 'rename',
+        'deal', 'pipeline', 'stage', 'value', 'company', 'source',
+        'probability', 'priority', 'close', 'date',
     })
     patterns = [
-        re.compile(r'(update|edit|change|modify|move|set).*(deal)'),
-        re.compile(r'(deal).*(update|edit|change|modify|move|set)'),
-        re.compile(r'(move|change)\s+.*(stage|pipeline)'),
+        re.compile(r'(update|edit|change|modify|move|set|rename)\b.*\bdeal\b'),
+        re.compile(r'\bdeal\b.*(?:update|edit|change|modify|move|set)'),
+        re.compile(r'(move|change)\s+.*\b(stage|pipeline)\b'),
+        re.compile(r'(?:set|change|update)\s+.*\b(?:value|company|source|priority|probability|close\s*date)\b'),
+        re.compile(r'\bdeal\b.*(?:to|value|company|source|priority|probability|close)'),
+        re.compile(r'(?:value|company|source|priority|probability)\s+(?:to|of|as)\b'),
     ]
 
     _STAGE_ALIASES = {
@@ -3292,62 +3536,147 @@ class UpdateDealAction(BaseAction):
         'contract': 'Contract Review', 'contract review': 'Contract Review',
         'won': 'Won', 'closed won': 'Won', 'winner': 'Won',
         'lost': 'Lost', 'closed lost': 'Lost', 'loser': 'Lost',
+        'new': 'New',
     }
     _PRIORITY_MAP = {
         'low': 'Low', 'medium': 'Medium', 'high': 'High', 'urgent': 'Urgent',
+    }
+    _SOURCE_ALIASES = {
+        'website': 'Website', 'referral': 'Referral', 'linkedin': 'LinkedIn',
+        'facebook': 'Facebook', 'instagram': 'Instagram',
+        'cold email': 'Cold Email', 'cold outreach': 'Cold Email',
+        'event': 'Event', 'conference': 'Event', 'webinar': 'Event',
+        'other': 'Other',
     }
 
     def _parse(self, text):
         body = text
         body = re.sub(
             r'^(?:please\s+)?(?:i\s+(?:want\s+(?:to\s+)?)?)?'
-            r'(?:update|edit|change|modify|move|set)\s+',
+            r'(?:update|edit|change|modify|move|set|rename)\s+',
             '', body, flags=re.IGNORECASE,
         ).strip()
+        body = _strip_leading_noise(body)
         return body
 
     def execute(self, text, user):
         body = self._parse(text)
         from deals.models import Deal
 
-        # Extract deal name — assume it's the first noun phrase before "to"/"stage"/"priority"/"value"
-        deal_name = body
+        deal_name = ''
         stage = None
         priority = None
         value = None
+        company = None
+        source = None
+        probability = None
+        close_date = None
+        description = None
+        notes = None
 
-        # Detect stage change: "X deal to Y" or "X deal stage to Y"
+        for_match = re.search(
+            r'\bfor\s+(.+?)$', body, flags=re.IGNORECASE,
+        )
+        if for_match:
+            deal_name = for_match.group(1).strip()
+            body = body[:for_match.start()].strip()
+
         stage_match = re.search(
-            r"(?:to|stage\s+to)\s+(" + '|'.join(self._STAGE_ALIASES.keys()) + r")\b",
+            r"(?:to|stage\s+to|stage\s+is)\s+(" + '|'.join(self._STAGE_ALIASES.keys()) + r")\b",
             body, flags=re.IGNORECASE,
         )
         if stage_match:
             raw = stage_match.group(1).lower()
             stage = self._STAGE_ALIASES.get(raw, raw.title())
-            deal_name = body[:stage_match.start()].strip()
 
-        # Detect priority change: "X deal priority to Y"
         pri_match = re.search(
-            r"(?:priority\s+to\s+)(" + '|'.join(self._PRIORITY_MAP.keys()) + r")\b",
+            r"(?:priority\s+(?:to|is)\s+)(" + '|'.join(self._PRIORITY_MAP.keys()) + r")\b",
             body, flags=re.IGNORECASE,
         )
+        if not pri_match:
+            pri_match = re.search(
+                r"priority\s+(" + '|'.join(self._PRIORITY_MAP.keys()) + r")\b",
+                body, flags=re.IGNORECASE,
+            )
         if pri_match:
             raw = pri_match.group(1).lower()
             priority = self._PRIORITY_MAP.get(raw, raw.title())
-            if not stage_match:
-                deal_name = body[:pri_match.start()].strip()
 
-        # Detect value change: "X deal value to $Y"
-        val_match = re.search(r"value\s+to\s+\$?(\d[\d,.]*)", body, flags=re.IGNORECASE)
+        val_match = re.search(r"value\s+(?:to|is)\s+\$?(\d[\d,.]*)", body, flags=re.IGNORECASE)
+        if not val_match:
+            val_match = re.search(r"(?:set|change|update)\s+(?:the\s+)?value\s+(?:to|as)\s+\$?(\d[\d,.]*)", body, flags=re.IGNORECASE)
+        if not val_match:
+            val_match = re.search(r"\$?(\d[\d,.]*)\s*(?:k\b|K\b)", body, flags=re.IGNORECASE)
         if val_match:
-            value = val_match.group(1).replace(',', '')
-            if not stage_match and not pri_match:
-                deal_name = body[:val_match.start()].strip()
+            raw_val = val_match.group(1).replace(',', '')
+            multiplier = 1
+            if val_match.group(0).lower().endswith('k'):
+                multiplier = 1000
+            value = str(int(float(raw_val) * multiplier))
 
-        deal_name = re.sub(r"'s\s*$", '', deal_name).strip()
-        deal_name = re.sub(r'\s+deal\s*$', '', deal_name, flags=re.IGNORECASE).strip()
-        deal_name = re.sub(r'\s+(?:stage|priority|value)\s*$', '', deal_name, flags=re.IGNORECASE).strip()
-        deal_name = _extract_title(deal_name)
+        company_match = re.search(
+            r"(?:company|client)\s+(?:to|is)\s+(.+?)(?:\s+(?:to|value|stage|priority|source|probab|close|for)\b|$)",
+            body, flags=re.IGNORECASE,
+        )
+        if not company_match:
+            company_match = re.search(
+                r"(?:set|change|update)\s+(?:the\s+)?(?:company|client)\s+(?:to|as)\s+(.+?)(?:\s+(?:to|value|stage|priority|source|probab|close|for)\b|$)",
+                body, flags=re.IGNORECASE,
+            )
+        if company_match:
+            company = company_match.group(1).strip()
+
+        source_match = re.search(
+            r"(?:source|from)\s+(?:to|is)\s+(" + '|'.join(self._SOURCE_ALIASES.keys()) + r")\b",
+            body, flags=re.IGNORECASE,
+        )
+        if not source_match:
+            source_match = re.search(
+                r"(?:set|change|update)\s+(?:the\s+)?(?:source|from)\s+(?:to|as)\s+(" + '|'.join(self._SOURCE_ALIASES.keys()) + r")\b",
+                body, flags=re.IGNORECASE,
+            )
+        if source_match:
+            raw_src = source_match.group(1).lower()
+            source = self._SOURCE_ALIASES.get(raw_src, raw_src.title())
+
+        prob_match = re.search(r"probab(?:ility)?\s+(?:to|is)\s+(\d{1,3})", body, flags=re.IGNORECASE)
+        if not prob_match:
+            prob_match = re.search(r"probab(?:ility)?\s+(\d{1,3})", body, flags=re.IGNORECASE)
+        if not prob_match:
+            prob_match = re.search(r"(?:set|change|update)\s+(?:the\s+)?probab(?:ility)?\s+(?:to|as)\s+(\d{1,3})", body, flags=re.IGNORECASE)
+        if prob_match:
+            prob_val = int(prob_match.group(1))
+            if 0 <= prob_val <= 100:
+                probability = prob_val
+
+        close_match = re.search(
+            r"(?:clos(?:e|ing)|expected)\s+(?:date\s+)?(?:to|is)\s+",
+            body, flags=re.IGNORECASE,
+        )
+        if close_match:
+            date_body = body[close_match.end():]
+            d, _ = _parse_date_from_text(date_body)
+            if d:
+                close_date = d
+
+        desc_match = re.search(r"\bdesc(?:ription)?\s+(?:to|is|:)\s+(.+?)(?:\s+(?:to|value|stage|priority|source|probab|close|notes|for)\b|$)", body, flags=re.IGNORECASE)
+        if desc_match:
+            description = desc_match.group(1).strip()
+
+        notes_match = re.search(r"\bnotes?\s+(?:to|is|:)\s+(.+?)$", body, flags=re.IGNORECASE)
+        if notes_match:
+            notes = notes_match.group(1).strip()
+
+        if not deal_name:
+            first_field_pos = len(body)
+            for m in [stage_match, pri_match, val_match, company_match, source_match, prob_match, close_match, desc_match, notes_match]:
+                if m and m.start() < first_field_pos:
+                    first_field_pos = m.start()
+            deal_name = body[:first_field_pos].strip()
+            deal_name = re.sub(r"'s\s*$", '', deal_name).strip()
+            deal_name = re.sub(r'\s+deal\s*$', '', deal_name, flags=re.IGNORECASE).strip()
+            deal_name = re.sub(r'\s+(?:stage|priority|value|company|source|probability|close|date|description|notes)\s*$', '', deal_name, flags=re.IGNORECASE).strip()
+            deal_name = _extract_title(deal_name)
 
         if not deal_name:
             return 'Could not identify the deal. Please specify a deal name.'
@@ -3370,6 +3699,24 @@ class UpdateDealAction(BaseAction):
         if value:
             deal.value = value
             changes.append(f'value updated to ${value}')
+        if company:
+            deal.company = company
+            changes.append(f'company set to "{company}"')
+        if source:
+            deal.source = source
+            changes.append(f'source set to "{source}"')
+        if probability is not None:
+            deal.probability = probability
+            changes.append(f'probability set to {probability}%')
+        if close_date:
+            deal.expected_close_date = close_date
+            changes.append(f'expected close date set to {close_date}')
+        if description:
+            deal.description = description
+            changes.append(f'description updated')
+        if notes:
+            deal.notes = notes
+            changes.append(f'notes updated')
 
         if not changes:
             return f'No changes detected for deal "{deal.deal_name}".'
@@ -3390,9 +3737,15 @@ class UpdateDealAction(BaseAction):
 @register
 class DeleteDealAction(BaseAction):
     action_type = 'delete_deal'
-    keywords = frozenset({'delete', 'remove', 'erase', 'cancel', 'deal'})
+    keywords = frozenset({
+        'delete', 'remove', 'erase', 'cancel', 'destroy', 'drop',
+        'deal', 'pipeline',
+    })
     patterns = [
-        re.compile(r'(delete|remove|erase|cancel)\b'),
+        re.compile(r'(?:delete|remove|erase|cancel|destroy|drop)\b.*\bdeal\b'),
+        re.compile(r'\bdeal\b.*(?:delete|remove|erase|cancel|destroy|drop)'),
+        re.compile(r'(?:delete|remove|erase|cancel|destroy|drop)\s+(?:the\s+)?deal\b'),
+        re.compile(r'\bdelete\s+all\s+deals?\b'),
     ]
 
     def _parse(self, text):
@@ -7474,6 +7827,36 @@ class ComposeEmailAction(BaseAction):
                 f'{'\n'.join(sig_lines)}'
             )
 
+        if email_addr:
+            from emails.models import SMTPConfig, EmailMessage
+            from emails.services import send_email_message
+            smtp = SMTPConfig.objects.filter(owner=user).first()
+            if smtp:
+                final_body = body + '\n\n' + '\n'.join(sig_lines) if body else '\n'.join(sig_lines)
+                try:
+                    email_msg = EmailMessage.objects.create(
+                        owner=user,
+                        smtp_config=smtp,
+                        to_emails=email_addr,
+                        subject=subject,
+                        body_plain=final_body,
+                        body_html=f'<pre style="font-family:inherit;white-space:pre-wrap">{final_body}</pre>',
+                        status='queued',
+                    )
+                    success, error = send_email_message(email_msg)
+                    from django.urls import reverse
+                    view_url = reverse('emails:detail', args=[email_msg.pk])
+                    if hasattr(self, '_current_request') and self._current_request is not None:
+                        view_url = self._current_request.build_absolute_uri(view_url)
+                    if success:
+                        result += f'\n\n---\n**Email sent successfully** to {recipient_name} <{email_addr}>\n[View in Sent Mail]({view_url})'
+                    else:
+                        result += f'\n\n---\nDraft saved. Failed to send: {error}\n[View details]({view_url})'
+                except Exception as e:
+                    result += f'\n\n---\nDraft saved. Send error: {e}'
+            else:
+                result += '\n\n---\n*Draft saved. Configure [SMTP Settings](/emails/smtp/config/) to send emails automatically.*'
+
         return result
 
 
@@ -7690,7 +8073,7 @@ class SendEmailAction(BaseAction):
 
         to_match = re.search(r'^To:\s*\n\s*(.+?)(?:\n|$)', raw_result, re.MULTILINE)
         subject_match = re.search(r'^Subject:\s*\n\s*(.+?)(?:\n|$)', raw_result, re.MULTILINE)
-        body_match = re.search(r'^Body:\s*\n(.*?)$', raw_result, re.DOTALL | re.MULTILINE)
+        body_match = re.search(r'^Body:\s*\n(.*)', raw_result, re.DOTALL | re.MULTILINE)
 
         if not to_match:
             to_match = re.search(r'^To:\s*(.+?)(?:\n|$)', raw_result, re.MULTILINE)
@@ -7797,12 +8180,25 @@ class AnalyticsAction(BaseAction):
         'expected revenue', 'revenue',
         'busy', 'packed', 'schedule', 'free', 'look',
         'statistics', 'stats', 'show', 'view',
+        'pipeline', 'forecast', 'opportunities', 'top deals',
+        'won deals', 'lost deals', 'deal analytics', 'sales summary',
+        'pipeline summary', 'revenue forecast', 'expected revenue',
+        'largest opportunities', 'win rate',
     })
     patterns = [
         re.compile(r'(?:how many|count|total|number of|how much)'),
         re.compile(r'expected revenue'),
         re.compile(r'(?:show|view|get)\s+(?:crm\s+)?(?:statistics?|stats?|summary|report|dashboard|analytics)\b'),
         re.compile(r'\b(?:how\s+(?:busy|packed)|am\s+i\s+(?:busy|free)|what\s+(?:does\s+)?(?:my\s+)?(?:week|schedule|day)\s+look)\b'),
+        re.compile(r'(?:show|view|get|what(?:\'s|\s+is)?)\s+(?:my\s+)?pipeline\b'),
+        re.compile(r'(?:sales|pipeline)\s+(?:summary|overview|analytics)\b'),
+        re.compile(r'(?:revenue|sales)\s+forecast\b'),
+        re.compile(r'expected\s+revenue\s+(?:this\s+)?month\b'),
+        re.compile(r'(?:top|largest|biggest)\s+(?:deals?|opportunities?)\b'),
+        re.compile(r'(?:won|closed\s+won)\s+deals?\b'),
+        re.compile(r'(?:lost|closed\s+lost)\s+deals?\b'),
+        re.compile(r'deal\s+analytics\b'),
+        re.compile(r'win\s+rate\b'),
     ]
 
     # ── Entity detection (ordered: more specific first) ──
@@ -8180,8 +8576,203 @@ class AnalyticsAction(BaseAction):
             '- How many tasks are overdue?\n'
             '- How many meetings this week?\n'
             '- How many workflows are active?\n'
-            '- What is my expected revenue?'
+            '- What is my expected revenue?\n'
+            '- Show pipeline summary\n'
+            '- Revenue forecast\n'
+            '- Top deals\n'
+            '- Won deals\n'
+            '- Deal analytics'
         )
+
+    # ------------------------------------------------------------------
+    # Pipeline-specific query helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_pipeline_query(text_lower):
+        pipeline_keywords = [
+            'pipeline', 'forecast', 'top deals', 'top opportunity',
+            'won deals', 'lost deals', 'deal analytics', 'win rate',
+            'sales summary', 'pipeline summary', 'revenue forecast',
+            'largest opportunity',
+        ]
+        return any(kw in text_lower for kw in pipeline_keywords)
+
+    @staticmethod
+    def _pipeline_summary(user):
+        from django.db.models import Sum
+        from deals.models import Deal
+        from decimal import Decimal
+
+        qs = Deal.objects.filter(owner=user)
+        total = qs.count()
+        won = qs.filter(stage='Won')
+        lost = qs.filter(stage='Lost')
+        open_deals = qs.exclude(stage__in=['Won', 'Lost'])
+
+        won_count = won.count()
+        lost_count = lost.count()
+        closed_count = won_count + lost_count
+        win_rate = (won_count / closed_count * 100) if closed_count else 0
+
+        won_value = won.aggregate(v=Sum('value'))['v'] or Decimal('0')
+        pipeline_value = open_deals.aggregate(v=Sum('value'))['v'] or Decimal('0')
+        avg_value = (qs.aggregate(v=Sum('value'))['v'] or Decimal('0')) / total if total else Decimal('0')
+
+        stages = []
+        stage_order = ['New', 'Qualified', 'Proposal Sent', 'Negotiation', 'Contract Review', 'Won', 'Lost']
+        for s in stage_order:
+            count = qs.filter(stage=s).count()
+            if count:
+                stages.append(f'  {s}: {count}')
+
+        lines = [
+            '**Sales Pipeline Summary**',
+            '',
+            f'Total Deals:     {total}',
+            f'Open Deals:      {open_deals.count()}',
+            f'Won Deals:       {won_count}',
+            f'Lost Deals:      {lost_count}',
+            f'Pipeline Value:  ${pipeline_value:,.2f}',
+            f'Won Revenue:     ${won_value:,.2f}',
+            f'Avg Deal Value:  ${avg_value:,.2f}',
+            f'Win Rate:        {win_rate:.1f}%',
+            '',
+        ]
+        if stages:
+            lines.append('Stage Breakdown:')
+            lines.extend(stages)
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _pipeline_stages(user):
+        from deals.models import Deal
+
+        qs = Deal.objects.filter(owner=user)
+        stage_order = ['New', 'Qualified', 'Proposal Sent', 'Negotiation', 'Contract Review', 'Won', 'Lost']
+
+        lines = ['**Pipeline by Stage**', '']
+        for s in stage_order:
+            count = qs.filter(stage=s).count()
+            if count:
+                lines.append(f'  {s}: {count} deal{"s" if count != 1 else ""}')
+
+        total = qs.count()
+        if total:
+            lines.append(f'\nTotal: {total} deals')
+        else:
+            lines.append('No deals in pipeline.')
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _revenue_forecast(user):
+        from deals.models import Deal
+        from decimal import Decimal
+        from datetime import date, timedelta
+
+        today = date.today()
+        month_start = today.replace(day=1)
+        if month_start.month == 12:
+            next_month_start = month_start.replace(year=month_start.year + 1, month=1, day=1)
+        else:
+            next_month_start = month_start.replace(month=month_start.month + 1, day=1)
+
+        if next_month_start.month == 12:
+            next_month_end = next_month_start.replace(year=next_month_start.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            next_month_end = next_month_start.replace(month=next_month_start.month + 1, day=1) - timedelta(days=1)
+
+        open_deals = Deal.objects.filter(owner=user).exclude(stage__in=['Won', 'Lost'])
+
+        this_month_deals = open_deals.filter(
+            expected_close_date__gte=month_start,
+            expected_close_date__lte=(month_start.replace(month=month_start.month + 1, day=1) - timedelta(days=1)),
+        )
+        next_month_deals = open_deals.filter(
+            expected_close_date__gte=next_month_start,
+            expected_close_date__lte=next_month_end,
+        )
+
+        this_month_est = sum(
+            (d.value or Decimal('0')) * (d.probability or 0) / 100
+            for d in this_month_deals
+        )
+        next_month_est = sum(
+            (d.value or Decimal('0')) * (d.probability or 0) / 100
+            for d in next_month_deals
+        )
+        projected = sum(
+            (d.value or Decimal('0')) * (d.probability or 0) / 100
+            for d in open_deals
+        )
+
+        return (
+            '**Revenue Forecast**\n'
+            f'Estimated This Month:  ${this_month_est:,.2f}\n'
+            f'Estimated Next Month:  ${next_month_est:,.2f}\n'
+            f'Projected Pipeline:    ${projected:,.2f}\n'
+            f'\nBased on {open_deals.count()} open deals with expected close dates.'
+        )
+
+    @staticmethod
+    def _top_deals(user, limit=5):
+        from deals.models import Deal
+
+        deals = (
+            Deal.objects.filter(owner=user)
+            .exclude(stage__in=['Won', 'Lost'])
+            .order_by('-value')[:limit]
+        )
+
+        lines = ['**Top Active Opportunities**', '']
+        for i, d in enumerate(deals, 1):
+            val = f'${d.value:,.2f}' if d.value else 'No value'
+            lines.append(f'{i}. {d.deal_name} — {val} ({d.stage}, {d.probability}% probable)')
+
+        if not deals:
+            lines.append('No open deals found.')
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _won_deals(user, limit=5):
+        from deals.models import Deal
+
+        deals = (
+            Deal.objects.filter(owner=user, stage='Won')
+            .order_by('-updated_at')[:limit]
+        )
+
+        lines = ['**Recent Won Deals**', '']
+        for d in deals:
+            val = f'${d.value:,.2f}' if d.value else 'No value'
+            lines.append(f'  {d.deal_name} — {val} (closed {d.updated_at.strftime("%b %d, %Y")})')
+
+        if not deals:
+            lines.append('No won deals yet.')
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _lost_deals(user, limit=5):
+        from deals.models import Deal
+
+        deals = (
+            Deal.objects.filter(owner=user, stage='Lost')
+            .order_by('-updated_at')[:limit]
+        )
+
+        lines = ['**Recent Lost Deals**', '']
+        for d in deals:
+            val = f'${d.value:,.2f}' if d.value else 'No value'
+            lines.append(f'  {d.deal_name} — {val} (lost {d.updated_at.strftime("%b %d, %Y")})')
+
+        if not deals:
+            lines.append('No lost deals.')
+
+        return '\n'.join(lines)
 
     # ------------------------------------------------------------------
     # Entry point
@@ -8192,6 +8783,22 @@ class AnalyticsAction(BaseAction):
             return None
 
         text_lower = text.lower()
+
+        # Pipeline-specific queries (handled first before entity detection)
+        if self._is_pipeline_query(text_lower):
+            if 'forecast' in text_lower or 'expected revenue' in text_lower:
+                return self._revenue_forecast(user)
+            if 'top deals' in text_lower or 'top opportunity' in text_lower or 'largest opportunity' in text_lower:
+                return self._top_deals(user)
+            if 'won deals' in text_lower:
+                return self._won_deals(user)
+            if 'lost deals' in text_lower:
+                return self._lost_deals(user)
+            if 'stage' in text_lower:
+                return self._pipeline_stages(user)
+            if 'win rate' in text_lower:
+                return self._pipeline_summary(user)
+            return self._pipeline_summary(user)
 
         # Detect time filter early (shared by all paths)
         time_key = self._detect_filter(text_lower, self._TIME_MAP)

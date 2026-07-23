@@ -133,15 +133,24 @@ def send_email_message(email_message):
             except Exception as e:
                 logger.warning('Failed to attach %s: %s', attachment.original_filename, e)
 
-        if smtp_config.use_ssl:
-            server = smtplib.SMTP_SSL(smtp_config.host, smtp_config.port, timeout=30)
-        else:
-            server = smtplib.SMTP(smtp_config.host, smtp_config.port, timeout=30)
-            if smtp_config.use_tls:
-                server.starttls()
-        server.login(smtp_config.username, smtp_config.password)
-        server.sendmail(sender_email, all_recipients, msg.as_string())
-        server.quit()
+        server = None
+        try:
+            if smtp_config.use_ssl:
+                server = smtplib.SMTP_SSL(smtp_config.host, smtp_config.port, timeout=30)
+            else:
+                server = smtplib.SMTP(smtp_config.host, smtp_config.port, timeout=30)
+                server.ehlo()
+                if smtp_config.use_tls:
+                    server.starttls()
+                    server.ehlo()
+            server.login(smtp_config.username, smtp_config.password)
+            server.sendmail(sender_email, all_recipients, msg.as_string())
+        finally:
+            if server:
+                try:
+                    server.quit()
+                except Exception:
+                    pass
 
         email_message.status = 'sent'
         email_message.sent_at = timezone.now()

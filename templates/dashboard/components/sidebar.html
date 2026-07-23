@@ -65,10 +65,9 @@
                 <i class="fas fa-robot"></i>
                 <span>AI Assistant</span>
             </a>
-            <a href="#" class="dash-nav-item" onclick="dashComingSoon('Analytics')">
+            <a href="{% url 'analytics:pipeline' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'analytics' %} active{% endif %}">
                 <i class="fas fa-chart-pie"></i>
                 <span>Analytics</span>
-                <span class="dash-nav-badge">Soon</span>
             </a>
         </div>
 
