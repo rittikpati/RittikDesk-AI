@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
+from activities.services import log_activity
 from .models import Contact
 from .forms import ContactForm
 
@@ -79,6 +80,11 @@ class ContactCreateView(LoginRequiredMixin, CreateView):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
         fire_trigger('contact_created', form.instance)
+        log_activity(self.request.user, 'contact_created',
+                     name=form.instance.full_name,
+                     object_id=form.instance.pk, object_repr=form.instance.full_name,
+                     detail_url=f'/contacts/{form.instance.pk}/',
+                     description=f'New contact created: {form.instance.full_name}')
         messages.success(self.request, f'Contact "{form.instance.full_name}" created successfully.')
         return response
 
@@ -103,6 +109,11 @@ class ContactUpdateView(OwnerFilterMixin, UpdateView):
     def form_valid(self, form):
         response = super().form_valid(form)
         fire_trigger('contact_created', form.instance)
+        log_activity(self.request.user, 'contact_updated',
+                     name=form.instance.full_name,
+                     object_id=form.instance.pk, object_repr=form.instance.full_name,
+                     detail_url=f'/contacts/{form.instance.pk}/',
+                     description=f'Contact "{form.instance.full_name}" updated')
         messages.success(self.request, f'Contact "{form.instance.full_name}" updated successfully.')
         return response
 
@@ -120,6 +131,10 @@ class ContactDeleteView(OwnerFilterMixin, DeleteView):
     context_object_name = 'contact'
 
     def form_valid(self, form):
+        log_activity(self.request.user, 'contact_deleted',
+                     name=self.object.full_name,
+                     object_id=self.object.pk, object_repr=self.object.full_name,
+                     description=f'Contact "{self.object.full_name}" deleted')
         messages.success(self.request, f'Contact "{self.object.full_name}" deleted successfully.')
         return super().form_valid(form)
 

@@ -24,6 +24,7 @@ urlpatterns = [
     path('calendar/', include('calendars.urls')),
     path('workflows/', include('workflows.urls')),
     path('emails/', include('emails.urls')),
+    path('activities/', include('activities.urls')),
     path('api/', include('accounts.api_urls')),
 ]
 

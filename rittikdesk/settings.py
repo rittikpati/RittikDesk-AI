@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'deals',
     'companies',
     'emails',
+    'activities',
 ]
 
 MIDDLEWARE = [

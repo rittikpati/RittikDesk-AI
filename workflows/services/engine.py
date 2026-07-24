@@ -124,6 +124,20 @@ def _run_workflow(workflow, context, trigger_type):
             link='/workflows/',
         )
 
+        try:
+            from activities.services import log_activity
+            log_activity(
+                workflow.owner,
+                'workflow_executed',
+                name=workflow.name,
+                object_id=workflow.pk,
+                object_repr=workflow.name,
+                detail_url='/workflows/',
+                description=f'Workflow "{workflow.name}" triggered by {trigger_type}',
+            )
+        except Exception:
+            logger.debug('Failed to log workflow activity')
+
 
 def _execute_single_action(user, action, context):
     """Execute one action and return result dict."""

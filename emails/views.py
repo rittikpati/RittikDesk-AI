@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
 from core.mixins import OwnerFilterMixin
+from activities.services import log_activity
 from .models import SMTPConfig, EmailMessage, EmailAttachment, EmailTemplate
 from .forms import SMTPConfigForm, ComposeEmailForm, EmailTemplateForm
 from .services import test_smtp_connection, send_email_message, diagnostic_smtp_connection
@@ -146,12 +147,27 @@ class ComposeEmailView(LoginRequiredMixin, CreateView):
             success, error = send_email_message(form.instance)
             if success:
                 messages.success(self.request, 'Email sent successfully.')
+                log_activity(self.request.user, 'email_sent',
+                             name=form.instance.subject or 'Email',
+                             object_id=form.instance.pk, object_repr=form.instance.subject,
+                             detail_url=f'/emails/{form.instance.pk}/',
+                             description=f'Email sent to {form.instance.to_emails}')
             else:
                 messages.error(self.request, f'Failed to send: {error}')
         elif action == 'schedule':
             messages.success(self.request, 'Email scheduled successfully.')
+            log_activity(self.request.user, 'email_scheduled',
+                         name=form.instance.subject or 'Email',
+                         object_id=form.instance.pk, object_repr=form.instance.subject,
+                         detail_url=f'/emails/{form.instance.pk}/',
+                         description=f'Email scheduled to {form.instance.to_emails}')
         else:
             messages.success(self.request, 'Draft saved.')
+            log_activity(self.request.user, 'email_draft',
+                         name=form.instance.subject or 'Email',
+                         object_id=form.instance.pk, object_repr=form.instance.subject,
+                         detail_url=f'/emails/{form.instance.pk}/',
+                         description=f'Email draft saved: {form.instance.subject}')
         return response
 
     def _handle_attachments(self, email, files):
@@ -231,12 +247,27 @@ class ReplyEmailView(LoginRequiredMixin, CreateView):
             success, error = send_email_message(form.instance)
             if success:
                 messages.success(self.request, 'Reply sent successfully.')
+                log_activity(self.request.user, 'email_sent',
+                             name=form.instance.subject or 'Reply',
+                             object_id=form.instance.pk, object_repr=form.instance.subject,
+                             detail_url=f'/emails/{form.instance.pk}/',
+                             description=f'Reply sent to {form.instance.to_emails}')
             else:
                 messages.error(self.request, f'Failed to send: {error}')
         elif action == 'schedule':
             messages.success(self.request, 'Reply scheduled.')
+            log_activity(self.request.user, 'email_scheduled',
+                         name=form.instance.subject or 'Reply',
+                         object_id=form.instance.pk, object_repr=form.instance.subject,
+                         detail_url=f'/emails/{form.instance.pk}/',
+                         description=f'Reply scheduled to {form.instance.to_emails}')
         else:
             messages.success(self.request, 'Draft saved.')
+            log_activity(self.request.user, 'email_draft',
+                         name=form.instance.subject or 'Reply',
+                         object_id=form.instance.pk, object_repr=form.instance.subject,
+                         detail_url=f'/emails/{form.instance.pk}/',
+                         description=f'Reply draft saved: {form.instance.subject}')
         return response
 
     def _handle_attachments(self, email, files):

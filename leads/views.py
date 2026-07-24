@@ -9,6 +9,7 @@ from django.http import JsonResponse, HttpResponse
 from django.contrib.auth import get_user_model
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
+from activities.services import log_activity
 from .models import Lead
 from .forms import LeadForm
 
@@ -99,6 +100,11 @@ class LeadCreateView(LoginRequiredMixin, CreateView):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
         fire_trigger('lead_created', form.instance)
+        log_activity(self.request.user, 'lead_created',
+                     name=form.instance.lead_name,
+                     object_id=form.instance.pk, object_repr=form.instance.lead_name,
+                     detail_url=f'/leads/{form.instance.pk}/',
+                     description=f'New lead created: {form.instance.lead_name}')
         messages.success(self.request, f'Lead "{form.instance.lead_name}" created successfully.')
         return response
 
@@ -130,8 +136,24 @@ class LeadUpdateView(OwnerFilterMixin, UpdateView):
                 fire_trigger('lead_qualified', form.instance)
             elif new_status == 'Won':
                 fire_trigger('lead_won', form.instance)
+                log_activity(self.request.user, 'lead_converted',
+                             name=form.instance.lead_name,
+                             object_id=form.instance.pk, object_repr=form.instance.lead_name,
+                             detail_url=f'/leads/{form.instance.pk}/',
+                             description=f'Lead "{form.instance.lead_name}" converted to Won')
             elif new_status == 'Lost':
                 fire_trigger('lead_lost', form.instance)
+            log_activity(self.request.user, 'lead_updated',
+                         name=form.instance.lead_name,
+                         object_id=form.instance.pk, object_repr=form.instance.lead_name,
+                         detail_url=f'/leads/{form.instance.pk}/',
+                         description=f'Lead "{form.instance.lead_name}" updated: {old_status} → {new_status}')
+        else:
+            log_activity(self.request.user, 'lead_updated',
+                         name=form.instance.lead_name,
+                         object_id=form.instance.pk, object_repr=form.instance.lead_name,
+                         detail_url=f'/leads/{form.instance.pk}/',
+                         description=f'Lead "{form.instance.lead_name}" updated')
         messages.success(self.request, f'Lead "{form.instance.lead_name}" updated successfully.')
         return response
 
@@ -149,6 +171,10 @@ class LeadDeleteView(OwnerFilterMixin, DeleteView):
     context_object_name = 'lead'
 
     def form_valid(self, form):
+        log_activity(self.request.user, 'lead_deleted',
+                     name=self.object.lead_name,
+                     object_id=self.object.pk, object_repr=self.object.lead_name,
+                     description=f'Lead "{self.object.lead_name}" deleted')
         messages.success(self.request, f'Lead "{self.object.lead_name}" deleted successfully.')
         return super().form_valid(form)
 

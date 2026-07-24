@@ -7,6 +7,7 @@ from django.utils import timezone
 from datetime import timedelta
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
+from activities.services import log_activity
 from .models import Task
 from .forms import TaskForm
 
@@ -111,6 +112,11 @@ class TaskCreateView(LoginRequiredMixin, CreateView):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
         fire_trigger('task_created', form.instance)
+        log_activity(self.request.user, 'task_created',
+                     name=form.instance.title,
+                     object_id=form.instance.pk, object_repr=form.instance.title,
+                     detail_url=f'/tasks/{form.instance.pk}/',
+                     description=f'New task created: {form.instance.title}')
         messages.success(self.request, f'Task "{form.instance.title}" created successfully.')
         return response
 
@@ -142,6 +148,17 @@ class TaskUpdateView(OwnerFilterMixin, UpdateView):
         response = super().form_valid(form)
         if old_status != form.instance.status and form.instance.status == 'completed':
             fire_trigger('task_completed', form.instance)
+            log_activity(self.request.user, 'task_completed',
+                         name=form.instance.title,
+                         object_id=form.instance.pk, object_repr=form.instance.title,
+                         detail_url=f'/tasks/{form.instance.pk}/',
+                         description=f'Task "{form.instance.title}" marked as completed')
+        else:
+            log_activity(self.request.user, 'task_updated',
+                         name=form.instance.title,
+                         object_id=form.instance.pk, object_repr=form.instance.title,
+                         detail_url=f'/tasks/{form.instance.pk}/',
+                         description=f'Task "{form.instance.title}" updated')
         messages.success(self.request, f'Task "{form.instance.title}" updated successfully.')
         return response
 
@@ -159,5 +176,9 @@ class TaskDeleteView(OwnerFilterMixin, DeleteView):
     context_object_name = 'task'
 
     def form_valid(self, form):
+        log_activity(self.request.user, 'task_deleted',
+                     name=self.object.title,
+                     object_id=self.object.pk, object_repr=self.object.title,
+                     description=f'Task "{self.object.title}" deleted')
         messages.success(self.request, f'Task "{self.object.title}" deleted successfully.')
         return super().form_valid(form)

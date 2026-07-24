@@ -10,6 +10,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
+from activities.services import log_activity
 from calendars.models import Event
 from calendars.forms import EventForm
 
@@ -135,6 +136,11 @@ class EventCreateView(LoginRequiredMixin, CreateView):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
         fire_trigger('meeting_created', form.instance)
+        log_activity(self.request.user, 'meeting_created',
+                     name=form.instance.title,
+                     object_id=form.instance.pk, object_repr=form.instance.title,
+                     detail_url=f'/calendar/{form.instance.pk}/',
+                     description=f'Event "{form.instance.title}" scheduled')
         messages.success(self.request, f'Event "{form.instance.title}" created successfully.')
         return response
 
@@ -166,6 +172,17 @@ class EventUpdateView(OwnerFilterMixin, UpdateView):
         response = super().form_valid(form)
         if old_status != form.instance.status and form.instance.status == 'completed':
             fire_trigger('meeting_finished', form.instance)
+            log_activity(self.request.user, 'meeting_completed',
+                         name=form.instance.title,
+                         object_id=form.instance.pk, object_repr=form.instance.title,
+                         detail_url=f'/calendar/{form.instance.pk}/',
+                         description=f'Meeting "{form.instance.title}" completed')
+        else:
+            log_activity(self.request.user, 'meeting_updated',
+                         name=form.instance.title,
+                         object_id=form.instance.pk, object_repr=form.instance.title,
+                         detail_url=f'/calendar/{form.instance.pk}/',
+                         description=f'Event "{form.instance.title}" updated')
         messages.success(self.request, f'Event "{form.instance.title}" updated successfully.')
         return response
 
@@ -183,5 +200,9 @@ class EventDeleteView(OwnerFilterMixin, DeleteView):
     context_object_name = 'event'
 
     def form_valid(self, form):
+        log_activity(self.request.user, 'meeting_deleted',
+                     name=self.object.title,
+                     object_id=self.object.pk, object_repr=self.object.title,
+                     description=f'Event "{self.object.title}" deleted')
         messages.success(self.request, f'Event "{self.object.title}" deleted successfully.')
         return super().form_valid(form)

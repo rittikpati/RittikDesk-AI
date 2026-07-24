@@ -1,0 +1,75 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Activity Timeline - RittikDesk AI{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link href="{% static 'activities/css/activities.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="act-page">
+    <div class="act-header">
+        <div class="act-header-left">
+            <h1 class="act-title"><i class="fas fa-stream"></i> Activity Timeline</h1>
+            <span class="act-total" id="actTotal"></span>
+        </div>
+        <div class="act-header-right">
+            <div class="act-search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="actSearch" placeholder="Search activities..." autocomplete="off">
+                <button class="act-search-clear" id="actSearchClear" style="display:none">&times;</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="act-filters">
+        <div class="act-filter-group">
+            <label class="act-filter-label">Module</label>
+            <select id="actModuleFilter" class="act-filter-select">
+                <option value="">All Activities</option>
+                {% for key, label in module_choices %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="act-filter-group">
+            <label class="act-filter-label">Time</label>
+            <select id="actTimeFilter" class="act-filter-select">
+                <option value="">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+            </select>
+        </div>
+        <button class="act-filter-clear btn-act btn-act-ghost" id="actFilterClear" style="display:none">
+            <i class="fas fa-times"></i> Clear Filters
+        </button>
+    </div>
+
+    <div class="act-timeline" id="actTimeline">
+        <div class="act-loading" id="actLoading">
+            <div class="act-spinner"></div>
+            <span>Loading activities...</span>
+        </div>
+    </div>
+
+    <div class="act-empty" id="actEmpty" style="display:none">
+        <i class="fas fa-stream"></i>
+        <h3>No activities found</h3>
+        <p>Start using your CRM and activities will appear here.</p>
+    </div>
+
+    <div class="act-load-more" id="actLoadMore" style="display:none">
+        <button class="btn-act btn-act-secondary" id="actLoadMoreBtn">
+            <i class="fas fa-arrow-down"></i> Load More
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="{% static 'activities/js/activities.js' %}"></script>
+{% endblock %}

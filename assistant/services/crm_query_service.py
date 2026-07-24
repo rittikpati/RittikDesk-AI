@@ -29,6 +29,10 @@ class CRMQueryService:
             (self._match_today_events, self._handle_today_events),
             (self._match_active_campaigns, self._handle_active_campaigns),
             (self._match_notifications, self._handle_notifications),
+            (self._match_recent_activity, self._handle_recent_activity),
+            (self._match_today_activity, self._handle_today_activity),
+            (self._match_today_emails, self._handle_today_emails),
+            (self._match_today_tasks, self._handle_today_tasks),
         ]
 
     # ------------------------------------------------------------------
@@ -270,4 +274,109 @@ class CRMQueryService:
                 f'{i}. **{notif.title}**{read}'
                 f'\n   _{notif.created_at.strftime("%b %d, %I:%M %p")}_'
             )
+        return '\n'.join(lines)
+
+    # ── Activity Timeline queries ──
+
+    @staticmethod
+    def _match_recent_activity(text):
+        patterns = [
+            r'(?:show|list|get|display|view)\s+(?:my\s+)?(?:recent\s+)?activit',
+            r'(?:what\s+did\s+i\s+do|my\s+activit|recent\s+activit)',
+            r'(?:show|list|get)\s+(?:my\s+)?(?:recent\s+)?(?:crm\s+)?(?:activity|log|history)',
+        ]
+        for pat in patterns:
+            if re.search(pat, text):
+                return {}
+        return None
+
+    @staticmethod
+    def _match_today_activity(text):
+        patterns = [
+            r'(?:what\s+did\s+i\s+do|my\s+activity|activity)\s+(?:today|this\s+day)',
+            r"(?:show|list|get)\s+(?:today'?s?\s+)?(?:crm\s+)?(?:activity|activities)",
+            r'(?:today\'?s?\s+(?:crm\s+)?activity|activity\s+(?:for|on)\s+today)',
+        ]
+        for pat in patterns:
+            if re.search(pat, text):
+                return {}
+        return None
+
+    @staticmethod
+    def _match_today_emails(text):
+        patterns = [
+            r'(?:what|which)\s+emails?\s+(?:were\s+)?(?:sent|delivered)',
+            r'(?:show|list|get)\s+(?:today\'?s?\s+)?(?:sent\s+)?emails?',
+            r'(?:emails?\s+(?:sent|delivered)\s+(?:today|this\s+day))',
+        ]
+        for pat in patterns:
+            if re.search(pat, text):
+                return {}
+        return None
+
+    @staticmethod
+    def _match_today_tasks(text):
+        patterns = [
+            r'(?:what|which)\s+tasks?\s+(?:were\s+)?(?:completed|done|finished)',
+            r'(?:show|list|get)\s+(?:today\'?s?\s+)?(?:completed\s+)?tasks?',
+            r'(?:tasks?\s+(?:completed|done)\s+(?:today|this\s+day))',
+        ]
+        for pat in patterns:
+            if re.search(pat, text):
+                return {}
+        return None
+
+    def _handle_recent_activity(self):
+        from activities.models import ActivityLog
+        qs = ActivityLog.objects.filter(user=self.user).order_by('-timestamp')[:20]
+        if not qs:
+            return 'No recent activities found. Start using your CRM and activities will appear here.'
+        lines = [f'**Recent Activities** ({qs.count()}):']
+        for i, act in enumerate(qs, 1):
+            time_str = act.timestamp.strftime('%b %d, %I:%M %p')
+            lines.append(f'{i}. **{act.title}** ({act.module}) — {time_str}')
+        return '\n'.join(lines)
+
+    def _handle_today_activity(self):
+        from activities.models import ActivityLog
+        today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        qs = ActivityLog.objects.filter(user=self.user, timestamp__gte=today).order_by('-timestamp')
+        count = qs.count()
+        if not qs:
+            return 'No activities recorded today yet.'
+        lines = [f"**Today's Activities** ({count}):"]
+        for i, act in enumerate(qs[:20], 1):
+            time_str = act.timestamp.strftime('%I:%M %p')
+            lines.append(f'{i}. **{act.title}** — {time_str}')
+        return '\n'.join(lines)
+
+    def _handle_today_emails(self):
+        from activities.models import ActivityLog
+        today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        qs = ActivityLog.objects.filter(
+            user=self.user, module='emails', timestamp__gte=today,
+        ).order_by('-timestamp')
+        count = qs.count()
+        if not qs:
+            return 'No emails sent today.'
+        lines = [f"**Today's Emails** ({count}):"]
+        for i, act in enumerate(qs[:20], 1):
+            time_str = act.timestamp.strftime('%I:%M %p')
+            lines.append(f'{i}. **{act.title}** — {time_str}')
+        return '\n'.join(lines)
+
+    def _handle_today_tasks(self):
+        from activities.models import ActivityLog
+        today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        qs = ActivityLog.objects.filter(
+            user=self.user, module='tasks', activity_type='task_completed',
+            timestamp__gte=today,
+        ).order_by('-timestamp')
+        count = qs.count()
+        if not qs:
+            return 'No tasks completed today.'
+        lines = [f"**Today's Completed Tasks** ({count}):"]
+        for i, act in enumerate(qs[:20], 1):
+            time_str = act.timestamp.strftime('%I:%M %p')
+            lines.append(f'{i}. **{act.title}** — {time_str}')
         return '\n'.join(lines)

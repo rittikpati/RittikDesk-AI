@@ -11,6 +11,7 @@ from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
+from activities.services import log_activity
 from .models import Deal
 from .forms import DealForm
 
@@ -111,6 +112,11 @@ class DealCreateView(LoginRequiredMixin, CreateView):
         form.instance.update_status_from_stage()
         response = super().form_valid(form)
         fire_trigger('deal_created', form.instance)
+        log_activity(self.request.user, 'deal_created',
+                     name=form.instance.deal_name,
+                     object_id=form.instance.pk, object_repr=form.instance.deal_name,
+                     detail_url=f'/deals/{form.instance.pk}/',
+                     description=f'New deal created: {form.instance.deal_name} ({form.instance.stage})')
         messages.success(self.request, f'Deal "{form.instance.deal_name}" created successfully.')
         return response
 
@@ -152,8 +158,29 @@ class DealUpdateView(OwnerFilterMixin, UpdateView):
             fire_trigger('deal_stage_changed', form.instance)
             if new_stage == 'Won':
                 fire_trigger('deal_won', form.instance)
+                log_activity(self.request.user, 'deal_won',
+                             name=form.instance.deal_name,
+                             object_id=form.instance.pk, object_repr=form.instance.deal_name,
+                             detail_url=f'/deals/{form.instance.pk}/',
+                             description=f'Deal "{form.instance.deal_name}" won — {form.instance.stage}')
             elif new_stage == 'Lost':
                 fire_trigger('deal_lost', form.instance)
+                log_activity(self.request.user, 'deal_lost',
+                             name=form.instance.deal_name,
+                             object_id=form.instance.pk, object_repr=form.instance.deal_name,
+                             detail_url=f'/deals/{form.instance.pk}/',
+                             description=f'Deal "{form.instance.deal_name}" lost')
+            log_activity(self.request.user, 'deal_stage_changed',
+                         name=form.instance.deal_name, stage=new_stage,
+                         object_id=form.instance.pk, object_repr=form.instance.deal_name,
+                         detail_url=f'/deals/{form.instance.pk}/',
+                         description=f'Deal "{form.instance.deal_name}" moved from {old_stage} to {new_stage}')
+        else:
+            log_activity(self.request.user, 'deal_updated',
+                         name=form.instance.deal_name,
+                         object_id=form.instance.pk, object_repr=form.instance.deal_name,
+                         detail_url=f'/deals/{form.instance.pk}/',
+                         description=f'Deal "{form.instance.deal_name}" updated')
         messages.success(self.request, f'Deal "{form.instance.deal_name}" updated successfully.')
         return response
 
@@ -171,6 +198,10 @@ class DealDeleteView(OwnerFilterMixin, DeleteView):
     context_object_name = 'deal'
 
     def form_valid(self, form):
+        log_activity(self.request.user, 'deal_deleted',
+                     name=self.object.deal_name,
+                     object_id=self.object.pk, object_repr=self.object.deal_name,
+                     description=f'Deal "{self.object.deal_name}" deleted')
         messages.success(self.request, f'Deal "{self.object.deal_name}" deleted successfully.')
         return super().form_valid(form)
 
@@ -462,8 +493,23 @@ class DealKanbanUpdateView(LoginRequiredMixin, View):
             deal.update_status_from_stage()
             deal.save()
             fire_trigger('deal_stage_changed', deal)
+            log_activity(request.user, 'deal_stage_changed',
+                         name=deal.deal_name, stage=new_stage,
+                         object_id=deal.pk, object_repr=deal.deal_name,
+                         detail_url=f'/deals/{deal.pk}/',
+                         description=f'Deal "{deal.deal_name}" moved from {old_stage} to {new_stage}')
             if new_stage == 'Won':
                 fire_trigger('deal_won', deal)
+                log_activity(request.user, 'deal_won',
+                             name=deal.deal_name,
+                             object_id=deal.pk, object_repr=deal.deal_name,
+                             detail_url=f'/deals/{deal.pk}/',
+                             description=f'Deal "{deal.deal_name}" won')
             elif new_stage == 'Lost':
                 fire_trigger('deal_lost', deal)
+                log_activity(request.user, 'deal_lost',
+                             name=deal.deal_name,
+                             object_id=deal.pk, object_repr=deal.deal_name,
+                             detail_url=f'/deals/{deal.pk}/',
+                             description=f'Deal "{deal.deal_name}" lost')
         return JsonResponse({'success': True, 'deal_id': deal_id, 'stage': new_stage})

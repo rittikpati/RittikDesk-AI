@@ -15,6 +15,8 @@ CRM_KEYWORDS = frozenset({
     'appointment', 'meet', 'deadline', 'due',
     'active', 'open', 'new', 'recent', 'upcoming',
     'highest', 'most', 'count', 'show', 'list',
+    'activity', 'activities', 'timeline', 'history', 'log',
+    'completed', 'done', 'finished',
 })
 
 

@@ -1644,6 +1644,17 @@ class CreateTaskAction(BaseAction):
             lines.append(f'Contact: {task.contact.full_name}')
         if task.description:
             lines.append(f'Description: {task.description[:200]}')
+
+        try:
+            from activities.services import log_activity
+            log_activity(user, 'ai_created_task',
+                         name=task.title,
+                         object_id=task.pk, object_repr=task.title,
+                         detail_url=f'/tasks/{task.pk}/',
+                         description=f'AI created task: {task.title}')
+        except Exception:
+            pass
+
         return '  \n'.join(lines)
 
     def _parse(self, text):
@@ -2116,6 +2127,17 @@ class CreateContactAction(BaseAction):
             lines.append(f'Tags: {contact.tags}')
         if contact.notes:
             lines.append(f'Notes: {contact.notes[:200]}')
+
+        try:
+            from activities.services import log_activity
+            log_activity(user, 'ai_created_contact',
+                         name=contact.full_name,
+                         object_id=contact.pk, object_repr=contact.full_name,
+                         detail_url=f'/contacts/{contact.pk}/',
+                         description=f'AI created contact: {contact.full_name}')
+        except Exception:
+            pass
+
         return '  \n'.join(lines)
 
     def _parse(self, text):
@@ -2738,6 +2760,17 @@ class CreateLeadAction(BaseAction):
             lines.append(f'Expected Revenue: ${lead.expected_revenue}')
         if lead.notes:
             lines.append(f'Notes: {lead.notes[:200]}')
+
+        try:
+            from activities.services import log_activity
+            log_activity(user, 'ai_created_lead',
+                         name=lead.lead_name,
+                         object_id=lead.pk, object_repr=lead.lead_name,
+                         detail_url=f'/leads/{lead.pk}/',
+                         description=f'AI created lead: {lead.lead_name}')
+        except Exception:
+            pass
+
         return '  \n'.join(lines)
 
     def _parse(self, text):
@@ -3489,6 +3522,16 @@ class CreateDealAction(BaseAction):
 
         from workflows.services.engine import fire_trigger
         fire_trigger('deal_created', deal)
+
+        try:
+            from activities.services import log_activity
+            log_activity(user, 'ai_created_deal',
+                         name=deal.deal_name,
+                         object_id=deal.pk, object_repr=deal.deal_name,
+                         detail_url=f'/deals/{deal.pk}/',
+                         description=f'AI created deal: {deal.deal_name}')
+        except Exception:
+            pass
 
         value_str = f'${deal.value:,.2f}' if deal.value else 'Not set'
         lines = [
@@ -4849,6 +4892,17 @@ class CreateCampaignAction(BaseAction):
         lines.append(f'Status: {campaign.status}')
         if campaign.body:
             lines.append(f'Body: {campaign.body[:200]}')
+
+        try:
+            from activities.services import log_activity
+            log_activity(user, 'ai_created_campaign',
+                         name=campaign.name,
+                         object_id=campaign.pk, object_repr=campaign.name,
+                         detail_url=f'/campaigns/{campaign.pk}/',
+                         description=f'AI created campaign: {campaign.name}')
+        except Exception:
+            pass
+
         return '  \n'.join(lines)
 
     def _parse(self, text):
@@ -7850,6 +7904,15 @@ class ComposeEmailAction(BaseAction):
                         view_url = self._current_request.build_absolute_uri(view_url)
                     if success:
                         result += f'\n\n---\n**Email sent successfully** to {recipient_name} <{email_addr}>\n[View in Sent Mail]({view_url})'
+                        try:
+                            from activities.services import log_activity
+                            log_activity(user, 'ai_sent_email',
+                                         name=subject or 'Email',
+                                         object_id=email_msg.pk, object_repr=subject,
+                                         detail_url=f'/emails/{email_msg.pk}/',
+                                         description=f'AI sent email to {recipient_name} <{email_addr}>')
+                        except Exception:
+                            pass
                     else:
                         result += f'\n\n---\nDraft saved. Failed to send: {error}\n[View details]({view_url})'
                 except Exception as e:
@@ -8145,6 +8208,15 @@ class SendEmailAction(BaseAction):
 
         if success:
             print(f'[SEND-EMAIL] SUCCESS: Email sent to {email_addr}', flush=True)
+            try:
+                from activities.services import log_activity
+                log_activity(user, 'ai_sent_email',
+                             name=subject or 'Email',
+                             object_id=email.pk, object_repr=subject,
+                             detail_url=f'/emails/{email.pk}/',
+                             description=f'AI sent email to {name_part} <{email_addr}>')
+            except Exception:
+                pass
             return (
                 '**Email Sent Successfully**\n\n'
                 f'**To:**\n{name_part} <{email_addr}>\n\n'
@@ -10773,6 +10845,17 @@ class CreateCompanyAction(BaseAction):
         company = Company.objects.create(owner=user, name=name)
         from workflows.services.engine import fire_trigger
         fire_trigger('company_created', company)
+
+        try:
+            from activities.services import log_activity
+            log_activity(user, 'ai_created_company',
+                         name=company.name,
+                         object_id=company.pk, object_repr=company.name,
+                         detail_url=f'/companies/{company.pk}/',
+                         description=f'AI created company: {company.name}')
+        except Exception:
+            pass
+
         return (
             f'✅ **Company created:** {name}\n\n'
             f'You can now add contacts, leads, and deals to this company.'

@@ -6,6 +6,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
+from activities.services import log_activity
 from .models import Campaign
 from .forms import CampaignForm
 
@@ -48,6 +49,11 @@ class CampaignCreateView(LoginRequiredMixin, CreateView):
         form.instance.owner = self.request.user
         response = super().form_valid(form)
         fire_trigger('campaign_started', form.instance)
+        log_activity(self.request.user, 'campaign_created',
+                     name=form.instance.name,
+                     object_id=form.instance.pk, object_repr=form.instance.name,
+                     detail_url=f'/campaigns/{form.instance.pk}/',
+                     description=f'New campaign created: {form.instance.name}')
         messages.success(self.request, f'Campaign "{form.instance.name}" created successfully.')
         return response
 
@@ -77,6 +83,11 @@ class CampaignUpdateView(OwnerFilterMixin, UpdateView):
                 fire_trigger('campaign_started', form.instance)
             elif form.instance.status == 'Sent':
                 fire_trigger('campaign_completed', form.instance)
+        log_activity(self.request.user, 'campaign_updated',
+                     name=form.instance.name,
+                     object_id=form.instance.pk, object_repr=form.instance.name,
+                     detail_url=f'/campaigns/{form.instance.pk}/',
+                     description=f'Campaign "{form.instance.name}" updated')
         messages.success(self.request, f'Campaign "{form.instance.name}" updated successfully.')
         return response
 
@@ -94,6 +105,10 @@ class CampaignDeleteView(OwnerFilterMixin, DeleteView):
     context_object_name = 'campaign'
 
     def form_valid(self, form):
+        log_activity(self.request.user, 'campaign_deleted',
+                     name=self.object.name,
+                     object_id=self.object.pk, object_repr=self.object.name,
+                     description=f'Campaign "{self.object.name}" deleted')
         messages.success(self.request, f'Campaign "{self.object.name}" deleted successfully.')
         return super().form_valid(form)
 

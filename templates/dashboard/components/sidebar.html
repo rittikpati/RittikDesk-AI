@@ -53,6 +53,10 @@
                 <i class="fas fa-bell"></i>
                 <span>Notifications</span>
             </a>
+            <a href="{% url 'activities:timeline' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'activities' %} active{% endif %}">
+                <i class="fas fa-stream"></i>
+                <span>Activity Timeline</span>
+            </a>
             <a href="{% url 'emails:sent' %}" class="dash-nav-item{% if request.resolver_match.app_name == 'emails' %} active{% endif %}">
                 <i class="fas fa-envelope"></i>
                 <span>Emails</span>

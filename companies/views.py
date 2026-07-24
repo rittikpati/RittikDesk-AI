@@ -11,6 +11,7 @@ from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from core.mixins import OwnerFilterMixin
 from workflows.services.engine import fire_trigger
+from activities.services import log_activity
 from .models import Company
 from .forms import CompanyForm, CompanyImportForm
 
@@ -147,6 +148,11 @@ class CompanyCreateView(OwnerFilterMixin, CreateView):
         response = super().form_valid(form)
         messages.success(self.request, f'Company "{form.instance.name}" created successfully.')
         fire_trigger('company_created', form.instance)
+        log_activity(self.request.user, 'company_created',
+                     name=form.instance.name,
+                     object_id=form.instance.pk, object_repr=form.instance.name,
+                     detail_url=f'/companies/{form.instance.pk}/',
+                     description=f'New company created: {form.instance.name}')
         return response
 
 
@@ -160,6 +166,11 @@ class CompanyUpdateView(OwnerFilterMixin, UpdateView):
         response = super().form_valid(form)
         messages.success(self.request, f'Company "{form.instance.name}" updated successfully.')
         fire_trigger('company_updated', form.instance)
+        log_activity(self.request.user, 'company_updated',
+                     name=form.instance.name,
+                     object_id=form.instance.pk, object_repr=form.instance.name,
+                     detail_url=f'/companies/{form.instance.pk}/',
+                     description=f'Company "{form.instance.name}" updated')
         return response
 
 
@@ -214,6 +225,10 @@ class CompanyDeleteView(OwnerFilterMixin, DeleteView):
             return self.form_invalid(form)
         messages.success(self.request, f'Company "{self.object.name}" deleted.')
         fire_trigger('company_deleted', self.object)
+        log_activity(self.request.user, 'company_deleted',
+                     name=self.object.name,
+                     object_id=self.object.pk, object_repr=self.object.name,
+                     description=f'Company "{self.object.name}" deleted')
         return super().form_valid(form)
 
 
